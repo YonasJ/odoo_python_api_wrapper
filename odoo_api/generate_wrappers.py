@@ -59,7 +59,7 @@ class Klass:
 
             py_type = "int"
             self.fields += f"    def get_{prop_name}(self, when_none:T=None) -> {py_type}|T:\n"
-            self.fields += f"        ret:ObjectWrapper = self.get_data(self._{prop_name.upper()}) # type: ignore\n"
+            self.fields += f"        ret:ObjectWrapper = self.get_data_{py_type}(self._{prop_name.upper()}) # type: ignore\n"
             
             self.fields += f"        if ret:\n"
             self.fields += f"            ret2 =ret.id\n"
