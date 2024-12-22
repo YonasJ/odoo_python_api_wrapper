@@ -191,10 +191,11 @@ class OdooTransaction:
                     for k,v in to_create[i].items(): # delete any keys that were saved
                         k:str
                         to_createm[i].wrapped_oject[k] = v
-                        if k.endswith("_id") and to_createm[i].changes[k[:-3]]:
-                            del to_createm[i].changes[k[:-3]]    
-                        else:
-                            del to_createm[i].changes[k]
+                        # if k.endswith("_id") and to_createm[i].changes[k[:-3]]:
+                        #     del to_createm[i].changes[k[:-3]]    
+                        # else:
+                        #     del to_createm[i].changes[k]
+                        del to_createm[i].changes[k]
                 # print(f"created {to_create}")
                 for c in to_createm:
                     for ffk in c.related_records.values(): # type: ignore
@@ -217,10 +218,11 @@ class OdooTransaction:
 
                     for k,v in to_update[i].items(): # delete any keys that were saved
                         to_updatem[i].wrapped_oject[k] = v
-                        if k.endswith("_id") and to_updatem[i].changes[k[:-3]]:
-                            del to_updatem[i].changes[k[:-3]]    
-                        else:
-                            del to_updatem[i].changes[k]     
+                        # if k.endswith("_id") and to_updatem[i].changes[k[:-3]]:
+                        #     del to_updatem[i].changes[k[:-3]]    
+                        # else:
+                        #     del to_updatem[i].changes[k]     
+                        del to_updatem[i].changes[k]     
 
 class OdooBackend:
     def __init__(self, db):
