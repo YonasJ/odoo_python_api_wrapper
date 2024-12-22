@@ -2,6 +2,7 @@ from __future__ import annotations  # This is crucial for forward references
 from abc import ABC, abstractmethod
 import copy
 import inspect
+import re
 from typing import TYPE_CHECKING, TypeVar
 from .data_class_interface import OdooWrapperInterface
 
@@ -226,15 +227,18 @@ class OdooTransaction:
 
 class OdooBackend:
     def __init__(self, db):
-        self.db = db
-        self.url = f"https://{db}.odoo.com"
+        if 'https://' in db:
+            self.url = db
+        else:   
+            self.url = f"https://{db}.odoo.com"
+        self.db = re.search(r"https://([^.]+)", self.url).group(1)
+
         p = KeePass().get_login(f"api://{db}.odoo.com")
         self.username = p.login
         self.api_key = p.password
         self.modelCache:dict[str,list[str]] = {}
         self._lazy_uid:str|None = None
 
-    
     @property
     def uid(self) -> str|None:
         if not self._lazy_uid:
