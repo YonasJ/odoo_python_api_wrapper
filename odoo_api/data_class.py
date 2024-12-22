@@ -1,7 +1,8 @@
 import copy
 from datetime import datetime
 from typing import Any
-from odoo_api import OdooTransaction,OdooWrapperInterface
+from .api_wrapper import OdooTransaction
+from .object_wrapper_interface import OdooWrapperInterface
 
 class OdooDataClass(OdooWrapperInterface):
     

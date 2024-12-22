@@ -5,3 +5,9 @@ Wrapper API for Odoo that allows for reading/writing objects over the API.
 
 ```bash
 pip install git+https://github.com/YonasJ/odoo-python-api-wrapper.git
+
+```
+
+## For local development.
+
+pip install -e .

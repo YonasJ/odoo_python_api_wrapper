@@ -1,5 +1,5 @@
 import os
-from odoo_api_wrapper import OdooBackend,OdooTransaction
+from .api_wrapper import OdooTransaction
 
 
 class Klass:
@@ -9,9 +9,8 @@ class Klass:
         self.model = model
         self.model_classes[model] = self.name
         self.imports = {}
-        self.add_import("db.OdooDataClass", "OdooDataClass")
-        self.add_import("odoo_base", "OdooTransaction")
-        # self.add_import("odoo_base", "ObjectWrapper")
+        self.add_import("odoo_api.object_wrapper", "ObjectWrapper")
+        self.add_import("odoo_api.api_wrapper", "OdooTransaction")
         self.add_import("typing", "TypeVar")
         self.type_only_forward_imports = {}
         self.odoo: OdooTransaction = odoo
@@ -27,17 +26,26 @@ class Klass:
     def field(self, field,read_only) -> None:
         prop_name = field_name = field['name']
 
+        if prop_name in ['create_uid', 'write_uid', 'id']:
+            return
+
         db_type = field['ttype']
 
-        
         if field_name.startswith("x_"):
             prop_name = field_name.replace("x_", "", 1)
 
         self.fields += f"    _{prop_name.upper()} = '{field_name}'\n"
 
+
         if db_type == 'many2one':
-            assert prop_name.endswith("_id"), "expected many2one to end in _id"
-            rel_prop_name = prop_name[:-3]
+            # assert prop_name.endswith("_id") , "expected many2one to end in _id"
+            if prop_name.endswith("_id"):
+                rel_prop_name = prop_name[:-3]
+            elif prop_name.endswith("_uid"):
+                rel_prop_name = prop_name[:-4]
+            else:
+                rel_prop_name = prop_name
+
             other_class_name = self.model_classes[field['relation']]
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
             self.fields += f"    @property\n"
@@ -51,7 +59,7 @@ class Klass:
 
             py_type = "int"
             self.fields += f"    def get_{prop_name}(self, when_none:T=None) -> {py_type}|T:\n"
-            self.fields += f"        ret:OdooDataClass = self.get_data(self._{prop_name.upper()}) # type: ignore\n"
+            self.fields += f"        ret:ObjectWrapper = self.get_data(self._{prop_name.upper()}) # type: ignore\n"
             
             self.fields += f"        if ret:\n"
             self.fields += f"            ret2 =ret.id\n"
@@ -132,17 +140,17 @@ class Klass:
         self.fields = ""
         
         for emodel in self.odoo.search_raw('ir.model',[("model","=", self.model)]):
-            print(f"Loading model {emodel['name']}")
+            print(f"Loading model {emodel.get_value('name')}")
             for field in self.odoo.search_raw('ir.model.fields',[("model","=", self.model)]):
                 
-                if field["name"] in ['id', 'create_uid', 'write_uid']:
+                if field.get_value("name") in ['id', 'create_uid', 'write_uid']:
                     continue
                 
                 read_only = False
-                if field['state'] == 'base':
+                if field.get_value('state') == 'base':
                     read_only = True
                 
-                ttype = field['ttype']
+                ttype = field.get_value('ttype')
 
                 self.field(field, read_only)
 
@@ -150,7 +158,7 @@ class Klass:
         header += f"\n"
         header += f"T = TypeVar('T')\n"
         header += f"\n"
-        header += f"class {self.name}B(OdooDataClass):\n"
+        header += f"class {self.name}B(ObjectWrapper):\n"
         header += f"    _MODEL = '{self.model}'\n\n"
 
 
@@ -185,18 +193,18 @@ class Klass:
         except Exception as e:
             print(f"Error writing to file: {e}")        
 
-odoo = OdooBackend("mixt").begin()
-models = [
-     Klass(odoo, "x_cd.supplier_payment", "SupplierPayment"),
-     Klass(odoo, "x_cd.supplier_payment_part", "SupplierPaymentPart"),
-     Klass(odoo, "x_cd.cto", "CTO"),
-     Klass(odoo, "x_cd.cto_booking", "CTOBooking"),
-     Klass(odoo, "x_cd.cto_booking_entry", "CTOBookingEntry"),
-     Klass(odoo, "x_cd.cto_payment", "CTOPayment"),
-     Klass(odoo, "x_cd.commission_forecast", "CDCommissionForecast"),
-     ]
+# odoo = OdooBackend("mixt").begin()
+# models = [
+#      Klass(odoo, "x_cd.supplier_payment", "SupplierPayment"),
+#      Klass(odoo, "x_cd.supplier_payment_part", "SupplierPaymentPart"),
+#      Klass(odoo, "x_cd.cto", "CTO"),
+#      Klass(odoo, "x_cd.cto_booking", "CTOBooking"),
+#      Klass(odoo, "x_cd.cto_booking_entry", "CTOBookingEntry"),
+#      Klass(odoo, "x_cd.cto_payment", "CTOPayment"),
+#      Klass(odoo, "x_cd.commission_forecast", "CDCommissionForecast"),
+#      ]
 
-for model in models:
-    model.save()
+# for model in models:
+#     model.save()
 
 
