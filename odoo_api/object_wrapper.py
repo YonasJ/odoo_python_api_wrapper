@@ -1,6 +1,6 @@
 from __future__ import annotations  # This is crucial for forward references
 
-from .object_wrapper_interface import OdooWrapperInterface
+from .data_class_interface import OdooWrapperInterface
 
 from typing import Any
 import json

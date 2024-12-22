@@ -9,7 +9,7 @@ class Klass:
         self.model = model
         self.model_classes[model] = self.name
         self.imports = {}
-        self.add_import("odoo_api.object_wrapper", "ObjectWrapper")
+        self.add_import("odoo_api.data_class", "OdooDataClass")
         self.add_import("odoo_api.api_wrapper", "OdooTransaction")
         self.add_import("typing", "TypeVar")
         self.type_only_forward_imports = {}
@@ -158,7 +158,7 @@ class Klass:
         header += f"\n"
         header += f"T = TypeVar('T')\n"
         header += f"\n"
-        header += f"class {self.name}B(ObjectWrapper):\n"
+        header += f"class {self.name}B(OdooDataClass):\n"
         header += f"    _MODEL = '{self.model}'\n\n"
 
 

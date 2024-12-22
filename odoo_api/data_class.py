@@ -2,7 +2,7 @@ import copy
 from datetime import datetime
 from typing import Any
 from .api_wrapper import OdooTransaction
-from .object_wrapper_interface import OdooWrapperInterface
+from .data_class_interface import OdooWrapperInterface
 
 class OdooDataClass(OdooWrapperInterface):
     
@@ -79,6 +79,11 @@ class OdooDataClass(OdooWrapperInterface):
         if ret is None:
             return None 
         return int(ret)
+    def get_data_bool(self, prop) -> bool|None:
+        ret= self.get_value(prop)
+        if ret is None:
+            return None 
+        return bool(ret)    
     def get_data_str(self, prop) -> str|None:
         ret= self.get_value(prop)
         if ret is None:
@@ -155,5 +160,7 @@ class OdooDataClass(OdooWrapperInterface):
 
     def set_data_int(self, prop, value:int|None) -> None:  
         self.set_data(prop, int(value) if value is not None else None)
+    def set_data_bool(self, prop, value:bool|None) -> None:  
+        self.set_data(prop, bool(value) if value is not None else None)
     def set_data_date(self, prop, value:datetime|None) -> None:  
         self.set_data(prop, value.strftime('%Y-%m-%d') if value is not None else None)

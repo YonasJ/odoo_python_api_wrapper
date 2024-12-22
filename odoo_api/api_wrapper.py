@@ -3,8 +3,7 @@ from abc import ABC, abstractmethod
 import copy
 import inspect
 from typing import TYPE_CHECKING, TypeVar
-if TYPE_CHECKING:
-    from .object_wrapper_interface import OdooWrapperInterface
+from .data_class_interface import OdooWrapperInterface
 
 if TYPE_CHECKING:
     from .data_class import OdooDataClass
