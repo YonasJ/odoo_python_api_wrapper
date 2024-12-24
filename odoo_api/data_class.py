@@ -14,7 +14,7 @@ class OdooDataClass(OdooWrapperInterface):
             self.wo = wo
         else:
             self.wo:dict[str,Any] = {}
-
+        
         self._changes:dict[str,Any] = {}
         
         self.related_records: dict[str,list[OdooDataClass]] = {}
@@ -36,20 +36,20 @@ class OdooDataClass(OdooWrapperInterface):
 
     @property
     def id(self) -> int:
-        ret = self.get_data_int("id")    
+        ret = self.get_value_int("id")    
         if not ret:
             raise ValueError("Null id")
         return ret
     
     def get_id(self, value_if_none)->int|None: # type: ignore
-        ret = self.get_data_int("id")    
+        ret = self.get_value_int("id")    
         if not ret:
             return value_if_none
         return ret
 
     @id.setter
     def id(self,id)->None: # type: ignore
-        self.set_data_int("id",id)
+        self.set_value_int("id",id)
     
     @property
     def transaction (self)->OdooTransaction: # type: ignore
@@ -69,57 +69,52 @@ class OdooDataClass(OdooWrapperInterface):
             return self.wo[prop]
         return value_if_none
 
-    def get_data_float(self, prop) -> float|None:
+    def get_value_float(self, prop) -> float|None:
         ret= self.get_value(prop)
         if ret is None:
             return None
         return float(ret)
-    def get_data_int(self, prop) -> int|None:
+    def get_value_int(self, prop) -> int|None:
         ret= self.get_value(prop)
         if ret is None:
             return None 
         return int(ret)
-    def get_data_bool(self, prop) -> bool|None:
+    def get_value_bool(self, prop) -> bool|None:
         ret= self.get_value(prop)
         if ret is None:
             return None 
         return bool(ret)    
-    def get_data_str(self, prop) -> str|None:
+    def get_value_str(self, prop) -> str|None:
         ret= self.get_value(prop)
-        if ret is None:
+        if ret is None or ret is False:
             return None 
         return str(ret)
-    def get_data_date(self, prop) -> datetime|None:
+    def get_value_date(self, prop) -> datetime|None:
         ret= self.get_value(prop)
         if ret is None or ret is False:
             return None
         return datetime.strptime(ret, "%Y-%m-%d")
 
-    def get_many2one(self, prop: str, model_class:type):
-        obj_field_name =prop[:-3]
+    def get_many2one(self, prop: str, model_class:type, when_none=None):
+        obj_field_name =prop
         existing_in_change = self.changes.get(obj_field_name)
         if existing_in_change: 
             return existing_in_change
-        value = self.get_value(obj_field_name) # not sure about this.
-        if value:
-            return value
+        value = self.get_value(obj_field_name, when_none) 
 
-        value = self.get_value(prop) # not sure about this.
         if value and not isinstance(value, OdooWrapperInterface):
-            match = self.odoo.get(model_class, "id", value[0])
+            if isinstance(value, int):
+                match = self.odoo.get(model_class, "id", value) # First element is the id, second the name.
+            else:
+                match = self.odoo.get(model_class, "id", value[0]) # First element is the id, second the name.
             if match:
                 self.wo[obj_field_name] = match
                 return match
-        raise Exception("The above should handle these?")            
-        model_name = model_class.Z_MODEL  # Extract the model name from the class
-        related_record_id = value[1]  # Get the res_id from the tuple
-        matches = self.odoo.search(model_name, [('id', '=', related_record_id)])
-        if matches:
-            return model_class(self.odoo, matches[0])
+        
+        return value
     
-    def set_many2one(self, prop:str, value:'OdooDataClass') -> None:  
-        obj_field_name =prop[:-3]
-        self.set_data(obj_field_name, value)
+    def set_many2one(self, prop:str, value:'OdooDataClass|None') -> None:  
+        self.set_data(prop, value)
     
     def get_one2many(self, field_name: str, other_model_class, field_in_other_model:str ):
         ret = self.related_records.get(field_name)
@@ -145,22 +140,22 @@ class OdooDataClass(OdooWrapperInterface):
         elif db_val != value:  
             self.changes[prop] = value
         
-    def set_data_money(self, prop, value:float) -> None: 
+    def set_value_money(self, prop, value:float) -> None: 
         self.set_data(prop, round(float(value),2))
-    def set_data_str(self, prop, value:str|None) -> None: 
+    def set_value_str(self, prop, value:str|None) -> None: 
         if value is None:
             self.set_data(prop, None)
         else:
             self.set_data(prop, str(value))
-    def set_data_float(self, prop, value:float|None) -> None: 
+    def set_value_float(self, prop, value:float|None) -> None: 
         if value is None:
-            self.set_data(prop, None)
+            self.set_data(prop, 0.0) # None handling with floats is not yet done, so we just save 0
         else:
             self.set_data(prop, float(value))
 
-    def set_data_int(self, prop, value:int|None) -> None:  
+    def set_value_int(self, prop, value:int|None) -> None:  
         self.set_data(prop, int(value) if value is not None else None)
-    def set_data_bool(self, prop, value:bool|None) -> None:  
+    def set_value_bool(self, prop, value:bool|None) -> None:  
         self.set_data(prop, bool(value) if value is not None else None)
-    def set_data_date(self, prop, value:datetime|None) -> None:  
+    def set_value_date(self, prop, value:datetime|None) -> None:  
         self.set_data(prop, value.strftime('%Y-%m-%d') if value is not None else None)

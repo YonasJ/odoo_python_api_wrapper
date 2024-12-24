@@ -52,14 +52,18 @@ class Klass:
             self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}:\n"
             self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        return self.get_many2one(self._{prop_name.upper()}, {other_class_name}) # type: ignore\n"
+            self.fields += f"    def get_{rel_prop_name}(self, when_none:T=None) -> {other_class_name}:\n"
+            self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        return self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none) # type: ignore\n"
 
             self.fields += f"    @{rel_prop_name}.setter\n"
             self.fields += f"    def {rel_prop_name}(self, value:{other_class_name}) -> None:\n"
             self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
 
             py_type = "int"
-            self.fields += f"    def get_{prop_name}(self, when_none:T=None) -> {py_type}|T:\n"
-            self.fields += f"        ret:ObjectWrapper = self.get_data_{py_type}(self._{prop_name.upper()}) # type: ignore\n"
+            self.fields += f"    def get_{rel_prop_name}_id(self, when_none:T=None) -> {py_type}|T:\n"
+            self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        ret:ObjectWrapper = self.get_many2one(self._{prop_name.upper()}, {other_class_name}) # type: ignore\n"
             
             self.fields += f"        if ret:\n"
             self.fields += f"            ret2 =ret.id\n"
@@ -68,8 +72,8 @@ class Klass:
             self.fields += f"        return when_none\n"
 
             self.fields += f"    @property\n"
-            self.fields += f"    def {prop_name}(self) -> {py_type}:\n"
-            self.fields += f"        ret = self.get_{prop_name}()\n"
+            self.fields += f"    def {rel_prop_name}_id(self) -> {py_type}:\n"
+            self.fields += f"        ret = self.get_{prop_name}_id()\n"
             self.fields += f"        if ret is None: raise ValueError(f'Key {prop_name} is not set.')\n"
             self.fields += f"        return ret\n\n"            
         elif db_type == 'one2many':
@@ -107,13 +111,13 @@ class Klass:
                 
             if py_conversion == 'date':
                 self.fields += f"    def get_{prop_name}_str(self, format:str = '%Y-%m-%d', when_none:T=None) -> str|T:\n"
-                self.fields += f"        ret = self.get_data_{py_conversion}(self._{prop_name.upper()})\n"
+                self.fields += f"        ret = self.get_value_{py_conversion}(self._{prop_name.upper()})\n"
                 self.fields += f"        if ret is None: \n"
                 self.fields += f"            return when_none\n"
                 self.fields += f"        return ret.strftime(format)\n"
                 
             self.fields += f"    def get_{prop_name}(self, when_none:T=None) -> {py_type}|T:\n"
-            self.fields += f"        ret = self.get_data_{py_conversion}(self._{prop_name.upper()})\n"
+            self.fields += f"        ret = self.get_value_{py_conversion}(self._{prop_name.upper()})\n"
             self.fields += f"        if ret is None: \n"
             self.fields += f"            return when_none\n"
             self.fields += f"        return ret\n"
@@ -128,7 +132,7 @@ class Klass:
             if not read_only:            
                 self.fields += f"    @{prop_name}.setter\n"
                 self.fields += f"    def {prop_name}(self, value:{py_type}|None) -> None:\n"
-                self.fields += f"        self.set_data_{py_conversion}(self._{prop_name.upper()}, value)\n"
+                self.fields += f"        self.set_value_{py_conversion}(self._{prop_name.upper()}, value)\n"
                             
             self.fields += "\n\n"
 
@@ -141,7 +145,11 @@ class Klass:
         
         for emodel in self.odoo.search_raw('ir.model',[("model","=", self.model)]):
             print(f"Loading model {emodel.get_value('name')}")
-            for field in self.odoo.search_raw('ir.model.fields',[("model","=", self.model)]):
+
+            fields = self.odoo.search_raw('ir.model.fields', [("model", "=", self.model)])
+            fields_sorted = sorted(fields, key=lambda field: (field.get_value("name") or "").lstrip("x_"))
+
+            for field in fields_sorted:
                 
                 if field.get_value("name") in ['id', 'create_uid', 'write_uid']:
                     continue
@@ -206,5 +214,3 @@ class Klass:
 
 # for model in models:
 #     model.save()
-
-

@@ -158,7 +158,7 @@ class OdooTransaction:
                 for k, v in o.changes.items():
                     if isinstance(v, OdooWrapperInterface):
                         if v.id:
-                            cm[f"{k}_id"] = v.id
+                            cm[f"{k}"] = v.id
                     else:
                         cm[k] = v
                 to_create.append(cm)  
@@ -169,13 +169,13 @@ class OdooTransaction:
     def commit(self):
         updated_models = set([m._MODEL for m in self.objects])# type: ignore
         models = [m for m in [ # preferred order of saving
-               "x_cd.supplier_payment",
-                "x_cd.supplier_payment_part",
-                "x_cd.cto", 
-                "x_cd.cto_booking",
-                "x_cd.cto_booking_entry",
-                "x_cd.cto_payment",
-                "x_cd.commission_forecast"
+            "cn.supplier.payment", 
+            "cn.supplier.payment_part",
+            "cn.cto.cto",
+            "cn.cto.booking",
+            "cn.cto.booking_entry", 
+            "cn.supplier.payment_allocation",
+            "cn.forecast.commission_forecast",
         ] if m in updated_models]
         
         for model in models: 
@@ -227,13 +227,13 @@ class OdooTransaction:
 
 class OdooBackend:
     def __init__(self, db):
-        if 'https://' in db:
+        if db.startswith('http'):
             self.url = db
         else:   
             self.url = f"https://{db}.odoo.com"
-        self.db = re.search(r"https://([^.]+)", self.url).group(1)
+        self.db: str | Any = re.search(r"https?://([^.]+)", self.url).group(1)
 
-        p = KeePass().get_login(f"api://{db}.odoo.com")
+        p = KeePass().get_login(re.sub(r"https?", "api", self.url))
         self.username = p.login
         self.api_key = p.password
         self.modelCache:dict[str,list[str]] = {}
