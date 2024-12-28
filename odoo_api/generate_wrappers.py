@@ -46,8 +46,10 @@ class Klass:
             else:
                 rel_prop_name = prop_name
 
-            other_class_name = self.model_classes[field['relation']]
-            self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
+            other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            if other_class_name != "OdooDataClass":
+                self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
+                
             self.fields += f"    @property\n"
             self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}:\n"
             self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
@@ -78,7 +80,7 @@ class Klass:
             self.fields += f"        return ret\n\n"            
         elif db_type == 'one2many':
             # self.imports['typing'] = 'list'
-            other_class_name = self.model_classes[field['relation']]
+            other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
             self.fields += f"    @property\n"
             self.fields += f"    def {prop_name}(self) -> list[{other_class_name}]:\n"
@@ -195,7 +197,7 @@ class Klass:
 
             if not os.path.exists(self.file_name_ext):
                 with open(self.file_name_ext, 'w') as f:
-                    f.write(f"from db.{self.name}B import {self.name}B\nfrom typing import Any\nfrom odoo_base import OdooTransaction\n\nclass {self.name}({self.name}B):\n    def __init__(self, odoo:OdooTransaction, wo:dict[str,Any]|None = None):\n        super().__init__(odoo, wo)")
+                    f.write(f"from db.{self.name}B import {self.name}B\nfrom typing import Any\nfrom odoo_api.api_wrapper import OdooTransaction\n\nclass {self.name}({self.name}B):\n    def __init__(self, odoo:OdooTransaction, wo:dict[str,Any]|None = None):\n        super().__init__(odoo, wo)")
 
 
         except Exception as e:
