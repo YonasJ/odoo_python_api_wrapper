@@ -168,15 +168,10 @@ class OdooTransaction:
     
     def commit(self):
         updated_models = set([m._MODEL for m in self.objects])# type: ignore
-        models = [m for m in [ # preferred order of saving
-            "cn.supplier.payment", 
-            "cn.supplier.payment_part",
-            "cn.cto.cto",
-            "cn.cto.booking",
-            "cn.cto.booking_entry", 
-            "cn.supplier.payment_allocation",
-            "cn.forecast.commission_forecast",
-        ] if m in updated_models]
+        models = [m for m in self.backend.save_order if m in updated_models]
+        for m in updated_models:
+            if m not in models:
+                models.append(m)
         
         for model in models: 
             to_create,to_createm = self._get_changes(model, True)
@@ -226,7 +221,7 @@ class OdooTransaction:
                         del to_updatem[i].changes[k]     
 
 class OdooBackend:
-    def __init__(self, db):
+    def __init__(self, db, save_order = []):
         if db.startswith('http'):
             self.url = db
         else:   
@@ -238,6 +233,9 @@ class OdooBackend:
         self.api_key = p.password
         self.modelCache:dict[str,list[str]] = {}
         self._lazy_uid:str|None = None
+        
+        self.save_order = save_order
+
 
     @property
     def uid(self) -> str|None:

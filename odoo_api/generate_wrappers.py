@@ -47,8 +47,7 @@ class Klass:
                 rel_prop_name = prop_name
 
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
-            if other_class_name != "OdooDataClass":
-                self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
+            self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
                 
             self.fields += f"    @property\n"
             self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}:\n"
@@ -178,11 +177,13 @@ class Klass:
         
         imports = ""
         if self.type_only_forward_imports:
-            imports += f"from __future__ import annotations  # This is crucial for forward references\n"
-            imports += f"from typing import TYPE_CHECKING\n"
-            imports += f"if TYPE_CHECKING:\n"
             for k,v in self.type_only_forward_imports.items():            
-                imports += f"    from {k} import {v} # Import only when type checking\n"
+                if v != "OdooDataClass":
+                    if not "from typing import TYPE_CHECKING" in imports:
+                        imports += f"from __future__ import annotations  # This is crucial for forward references\n"
+                        imports += f"from typing import TYPE_CHECKING\n"
+                        imports += f"if TYPE_CHECKING:\n"
+                    imports += f"    from {k} import {v} # Import only when type checking\n"
 
         for k,v in self.imports.items():       
             imports += f"from {k} import {v}\n"
