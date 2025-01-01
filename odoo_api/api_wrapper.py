@@ -158,7 +158,7 @@ class OdooTransaction:
                 for k, v in o.changes.items():
                     if isinstance(v, OdooWrapperInterface):
                         if v.id:
-                            cm[f"{k}"] = v.id
+                            cm[k] = v.id
                     else:
                         cm[k] = v
                 to_create.append(cm)  
@@ -226,7 +226,8 @@ class OdooBackend:
             self.url = db
         else:   
             self.url = f"https://{db}.odoo.com"
-        self.db: str | Any = re.search(r"https?://([^.]+)", self.url).group(1)
+        match = re.search(r"https?://([^.]+)", self.url)
+        self.db: str | Any = match.group(1) if match else None
 
         p = KeePass().get_login(re.sub(r"https?", "api", self.url))
         self.username = p.login
