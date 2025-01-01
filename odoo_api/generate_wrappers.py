@@ -56,10 +56,11 @@ class Klass:
             self.fields += f"    def get_{rel_prop_name}(self, when_none:T=None) -> {other_class_name}:\n"
             self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        return self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none) # type: ignore\n"
-
-            self.fields += f"    @{rel_prop_name}.setter\n"
-            self.fields += f"    def {rel_prop_name}(self, value:{other_class_name}) -> None:\n"
-            self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
+            
+            if not read_only:
+                self.fields += f"    @{rel_prop_name}.setter\n"
+                self.fields += f"    def {rel_prop_name}(self, value:{other_class_name}) -> None:\n"
+                self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
 
             py_type = "int"
             self.fields += f"    def get_{rel_prop_name}_id(self, when_none:T=None) -> {py_type}|T:\n"
@@ -151,15 +152,12 @@ class Klass:
             fields_sorted = sorted(fields, key=lambda field: (field.get_value("name") or "").lstrip("x_"))
 
             for field in fields_sorted:
-                
                 if field.get_value("name") in ['id', 'create_uid', 'write_uid']:
                     continue
                 
                 read_only = False
-                if field.get_value('state') == 'base':
+                if field.get_value('readonly'):
                     read_only = True
-                
-                ttype = field.get_value('ttype')
 
                 self.field(field, read_only)
 

@@ -29,8 +29,7 @@ class ObjectWrapper(OdooWrapperInterface):
         return self.changes
 
     def get_value(self, prop, value_if_none=None)->Any|None: # type: ignore
-        return getattr(self._wrapped_obj, prop, value_if_none)
-    
+        return self._wrapped_obj.get(prop, value_if_none)
     
     def __getattr__(self, attr):
         # see if this object has attr
