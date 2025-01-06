@@ -41,7 +41,7 @@ class OdooDataClass(OdooWrapperInterface):
             raise ValueError("Null id")
         return ret
     
-    def get_id(self, value_if_none)->int|None: # type: ignore
+    def get_id(self, value_if_none=None)->int|None: # type: ignore
         ret = self.get_value_int("id")    
         if not ret:
             return value_if_none

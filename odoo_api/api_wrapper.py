@@ -71,7 +71,22 @@ class OdooTransaction:
             nr:T = wrapper(self, x) # type: ignore
             ret.append(nr) 
         return ret
-        
+
+    def search_singleton(self, wrapper:type[T], search, fields=[]) -> T|None: 
+        ret = self.search(wrapper, search, fields)
+        if len(ret) == 0:
+            return None
+        if len(ret) > 1:
+            raise ValueError(f"Expected 1 record, got {len(ret)}")
+        return ret[0]  
+
+    def search_first(self, wrapper:type[T], search, fields=[]) -> T|None: 
+        ret = self.search(wrapper, search, fields)
+        if len(ret) == 0:
+            return None
+        return ret[0]  
+
+
     def search_raw(self, model, search, fields=[]) -> list[OdooWrapperInterface]:
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         ret = []
@@ -157,8 +172,12 @@ class OdooTransaction:
                 cm: dict[str,Any] = {}
                 for k, v in o.changes.items():
                     if isinstance(v, OdooWrapperInterface):
-                        if v.id:
+                        if v.get_id():
                             cm[k] = v.id
+                        else:
+                            ids: int = self.create(v.model, [{"name": "New object part of cycle in commit"}]) # type: ignore
+                            assert isinstance(ids, int)
+                            cm[k] = v.id = ids
                     else:
                         cm[k] = v
                 to_create.append(cm)  

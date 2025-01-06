@@ -198,9 +198,18 @@ class Klass:
                 with open(self.file_name_ext, 'w') as f:
                     f.write(f"from db.{self.name}B import {self.name}B\nfrom typing import Any\nfrom odoo_api.api_wrapper import OdooTransaction\n\nclass {self.name}({self.name}B):\n    def __init__(self, odoo:OdooTransaction, wo:dict[str,Any]|None = None):\n        super().__init__(odoo, wo)")
 
-
+            init_py_path = "db/__init__.py"
+            if not os.path.exists(init_py_path):
+                with open(init_py_path, 'w') as f:
+                    f.write(f"from .{self.name} import {self.name}\n")
+            else:
+                with open(init_py_path, 'a') as f:
+                    f.write(f"from .{self.name} import {self.name}\n")
+                    
         except Exception as e:
-            print(f"Error writing to file: {e}")        
+            print(f"Error writing to file: {e}")       
+
+         
 
 # odoo = OdooBackend("mixt").begin()
 # models = [
