@@ -60,7 +60,7 @@ class Klass:
             if other_class_name != "OdooDataClass":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none)\n"
-            self.fields += f"        return ret if ret else when_none\n"
+            self.fields += f"        return ret if ret else when_none # type: ignore\n"
             
             if not read_only:
                 self.fields += f"    @{rel_prop_name}.setter\n"
