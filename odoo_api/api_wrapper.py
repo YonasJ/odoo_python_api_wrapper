@@ -5,9 +5,9 @@ import inspect
 import re
 from typing import TYPE_CHECKING, TypeVar
 from .data_class_interface import OdooWrapperInterface
-
 if TYPE_CHECKING:
     from .data_class import OdooDataClass
+    from .data_class import OdooManyToManyHelper
 
 
 from typing import Any
@@ -162,7 +162,9 @@ class OdooTransaction:
         return self._execute_actionj("common", "login",[])
 
     
-    def _get_changes(self, model:str, new_only:bool):
+    def  _get_changes(self, model:str, new_only:bool):
+        from .data_class import OdooManyToManyHelper
+
         to_create = []
         to_createm:list[OdooWrapperInterface] = []
         for o in self.objects:
@@ -178,6 +180,12 @@ class OdooTransaction:
                             ids: int = self.create(v.model, [{"name": "New object part of cycle in commit"}]) # type: ignore
                             assert isinstance(ids, int)
                             cm[k] = v.id = ids
+                    elif isinstance(v, OdooManyToManyHelper):
+                        c = []
+                        for x in v.adds:
+                            c.append((4,x.id,)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
+                        # v is going to be a parameter to the write call.
+                        cm[k] = c
                     else:
                         cm[k] = v
                 to_create.append(cm)  

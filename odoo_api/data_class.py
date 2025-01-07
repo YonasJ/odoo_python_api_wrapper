@@ -1,8 +1,15 @@
 import copy
 from datetime import datetime
-from typing import Any
+import time
+from typing import Any, TypeVar
 from .api_wrapper import OdooTransaction
 from .data_class_interface import OdooWrapperInterface
+
+class OdooManyToManyHelper:
+    def __init__(self):
+        self.adds:list[OdooWrapperInterface] = []
+        self.removes:list[OdooWrapperInterface] = []
+        pass
 
 class OdooDataClass(OdooWrapperInterface):
     
@@ -17,7 +24,7 @@ class OdooDataClass(OdooWrapperInterface):
         
         self._changes:dict[str,Any] = {}
         
-        self.related_records: dict[str,list[OdooDataClass]] = {}
+        self.related_records: dict[str,list[OdooWrapperInterface]] = {}
 
     # also note you must have a class property called _MODEL
     def __deepcopy__(self, memo):
@@ -95,7 +102,9 @@ class OdooDataClass(OdooWrapperInterface):
             return None
         return datetime.strptime(ret, "%Y-%m-%d")
 
-    def get_many2one(self, prop: str, model_class:type, when_none=None):
+    T = TypeVar('T')
+    def get_many2one(self, prop: str, model_class:type[T], when_none:T|None=None) -> T | None:# -> Any | Any | int | None | OdooWrapperInterface:# -> Any | Any | int | None | OdooWrapperInterface:
+        assert issubclass(model_class, OdooWrapperInterface)
         obj_field_name =prop
         existing_in_change = self.changes.get(obj_field_name)
         if existing_in_change: 
@@ -110,23 +119,66 @@ class OdooDataClass(OdooWrapperInterface):
             if match:
                 self.wo[obj_field_name] = match
                 return match
-        
-        return value
+        assert isinstance(value, OdooWrapperInterface) or value is None
+        return value # type: ignore
     
     def set_many2one(self, prop:str, value:'OdooDataClass|None') -> None:  
         self.set_data(prop, value)
     
-    def get_one2many(self, field_name: str, other_model_class, field_in_other_model:str ):
-        ret = self.related_records.get(field_name)
+    TT = TypeVar('TT')
+    def get_one2many(self, field_name: str, other_model_class:type[TT], field_in_other_model:str) -> list[TT]:
+        assert issubclass(other_model_class, OdooWrapperInterface)
+        ids = self.wrapped_oject.get(field_name)
+        ret:list[TT]|None = self.related_records.get(field_name) # type: ignore
         if ret is None:
             self.related_records[field_name] = ret = []
+            if self.get_value(field_name):
+                related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
             if self.get_value('id'):
                 related = self.odoo.search(other_model_class,[(field_in_other_model, '=', self.id)])
-
-                for r in related:
-                    ret.append(r)
+                ret.extend(related)
         return ret
-    
+       
+    TTT = TypeVar('TTT')
+    def get_many2many(self, field_name: str, other_model_class:type[TTT]) -> tuple[TTT]:
+        assert issubclass(other_model_class, OdooWrapperInterface)
+        ids = self.wrapped_oject.get(field_name)
+        ret:list[TT]|None = self.related_records.get(field_name) # type: ignore
+        if ret is None:
+            self.related_records[field_name] = ret = []
+            if self.get_value(field_name):
+                related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
+                ret.extend(related)
+
+        return tuple(ret)
+
+    TTTT = TypeVar('TTTT', bound=OdooWrapperInterface)
+    def append_many2many(self, field_name: str, other_model_class:type[TTTT], new_value:type[TTTT]):
+        assert issubclass(other_model_class, OdooWrapperInterface)
+        assert isinstance(new_value, OdooWrapperInterface)
+
+        ids = self.wrapped_oject.get(field_name)
+        ret:list[TT]|None = self.related_records.get(field_name) # type: ignore
+        if ret is None:
+            self.related_records[field_name] = ret = []
+            if self.get_value(field_name):
+                related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
+                ret.extend(related)
+        if not new_value.get_id(): raise ValueError("Cannot append a record that has not been saved yet.")
+        for x in ret:
+            if x.id == new_value.id:
+                return
+
+        # Save to changes
+        if self.changes.get(field_name) is None:
+            self.changes[field_name] = OdooManyToManyHelper()
+
+        h = self.changes[field_name]
+        h.adds.append(new_value)
+
+        ret.append(new_value)
+        self.transaction.commit()
+
     def set_one2many(self):
         raise Exception("asdf")
         # return None

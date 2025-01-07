@@ -49,13 +49,19 @@ class Klass:
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
                 
-            self.fields += f"    @property\n"
+            self.fields += f"    @property # many2one\n"
             self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}:\n"
-            self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
-            self.fields += f"        return self.get_many2one(self._{prop_name.upper()}, {other_class_name}) # type: ignore\n"
-            self.fields += f"    def get_{rel_prop_name}(self, when_none:T=None) -> {other_class_name}:\n"
-            self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
-            self.fields += f"        return self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none) # type: ignore\n"
+            if other_class_name != "OdooDataClass":
+                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name}) \n"
+            self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
+            self.fields += f"        return ret\n"
+            self.fields += f"    def get_{rel_prop_name}(self, when_none:{other_class_name}|None=None) -> {other_class_name}:\n"
+            if other_class_name != "OdooDataClass":
+                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none)\n"
+            self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
+            self.fields += f"        return ret\n"
             
             if not read_only:
                 self.fields += f"    @{rel_prop_name}.setter\n"
@@ -63,9 +69,10 @@ class Klass:
                 self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
 
             py_type = "int"
-            self.fields += f"    def get_{rel_prop_name}_id(self, when_none:T=None) -> {py_type}|T:\n"
-            self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
-            self.fields += f"        ret:ObjectWrapper = self.get_many2one(self._{prop_name.upper()}, {other_class_name}) # type: ignore\n"
+            self.fields += f"    def get_{rel_prop_name}_id(self, when_none:{py_type}|None=None) -> {py_type}|None:\n"
+            if other_class_name != "OdooDataClass":
+                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name})\n"
             
             self.fields += f"        if ret:\n"
             self.fields += f"            ret2 =ret.id\n"
@@ -75,22 +82,33 @@ class Klass:
 
             self.fields += f"    @property\n"
             self.fields += f"    def {rel_prop_name}_id(self) -> {py_type}:\n"
-            self.fields += f"        ret = self.get_{prop_name}_id()\n"
+            self.fields += f"        ret = self.get_{rel_prop_name}_id()\n"
             self.fields += f"        if ret is None: raise ValueError(f'Key {prop_name} is not set.')\n"
             self.fields += f"        return ret\n\n"            
         elif db_type == 'one2many':
             # self.imports['typing'] = 'list'
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
-            self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
-            self.fields += f"    @property\n"
+            self.type_only_forward_imports[f"{other_class_name}"] = other_class_name
+            self.fields += f"    @property # one2many\n"
             self.fields += f"    def {prop_name}(self) -> list[{other_class_name}]:\n"
-            self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
-            self.fields += f"        return self.get_one2many(self._{prop_name.upper()}, {other_class_name}, '{field['relation_field']}') # type: ignore\n"
-
-            # self.fields += f"    @{prop_name}.setter\n"
-            # self.fields += f"    def {prop_name}(self, value:{other_class_name}) -> None:\n"
-            # self.fields += f"        self.set_one2many(self._{prop_name.upper()}, value)\n"
-            # self.fields += f"\n"
+            if other_class_name != "OdooDataClass":
+                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        ret = self.get_one2many(self._{prop_name.upper()}, {other_class_name}, '{field['relation_field']}')\n"
+            self.fields += f"        return ret\n"
+        elif db_type == 'many2many':
+            # self.imports['typing'] = 'list'
+            other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
+            self.fields += f"    @property # many2many\n"
+            self.fields += f"    def {prop_name}(self) -> tuple[{other_class_name}]:\n"
+            if other_class_name != "OdooDataClass":
+                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        ret = self.get_many2many(self._{prop_name.upper()}, {other_class_name}) \n"
+            self.fields += f"        return ret\n"
+            self.fields += f"    def {prop_name}_append(self, new_value:{other_class_name}):\n"
+            if other_class_name != "OdooDataClass":
+                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
+            self.fields += f"        self.append_many2many(self._{prop_name.upper()}, {other_class_name}, new_value) \n"
         else:                    
             
             match db_type:
@@ -112,13 +130,13 @@ class Klass:
                     py_type = py_conversion = 'str'
                 
             if py_conversion == 'date':
-                self.fields += f"    def get_{prop_name}_str(self, format:str = '%Y-%m-%d', when_none:T=None) -> str|T:\n"
+                self.fields += f"    def get_{prop_name}_str(self, format:str = '%Y-%m-%d', when_none:str|None=None) -> str|None:\n"
                 self.fields += f"        ret = self.get_value_{py_conversion}(self._{prop_name.upper()})\n"
                 self.fields += f"        if ret is None: \n"
                 self.fields += f"            return when_none\n"
                 self.fields += f"        return ret.strftime(format)\n"
                 
-            self.fields += f"    def get_{prop_name}(self, when_none:T=None) -> {py_type}|T:\n"
+            self.fields += f"    def get_{prop_name}(self, when_none:{py_type}|None=None) -> {py_type}|None:\n"
             self.fields += f"        ret = self.get_value_{py_conversion}(self._{prop_name.upper()})\n"
             self.fields += f"        if ret is None: \n"
             self.fields += f"            return when_none\n"
@@ -138,11 +156,12 @@ class Klass:
                             
             self.fields += "\n\n"
 
-    def save(self):
+    def save(self, base_dir):
         
-        
-        self.file_name_base = f'db/{self.name}B.py'
-        self.file_name_ext = f'db/{self.name}.py'
+        self.file_name_base = f'{base_dir}/db/{self.name}B.py'
+        self.file_name_ext = f'{base_dir}/db/{self.name}.py'
+        self.init_py_path = f"{base_dir}/db/__init__.py"
+
         self.fields = ""
         
         for emodel in self.odoo.search_raw('ir.model',[("model","=", self.model)]):
@@ -198,14 +217,19 @@ class Klass:
                 with open(self.file_name_ext, 'w') as f:
                     f.write(f"from db.{self.name}B import {self.name}B\nfrom typing import Any\nfrom odoo_api.api_wrapper import OdooTransaction\n\nclass {self.name}({self.name}B):\n    def __init__(self, odoo:OdooTransaction, wo:dict[str,Any]|None = None):\n        super().__init__(odoo, wo)")
 
-            init_py_path = "db/__init__.py"
-            if not os.path.exists(init_py_path):
-                with open(init_py_path, 'w') as f:
-                    f.write(f"from .{self.name} import {self.name}\n")
+            import_statement = f"from .{self.name} import {self.name}\n"
+
+            if os.path.exists(self.init_py_path):
+                with open(self.init_py_path, 'r') as f:
+                    content = f.read()
             else:
-                with open(init_py_path, 'a') as f:
-                    f.write(f"from .{self.name} import {self.name}\n")
-                    
+                content = ""
+
+            if import_statement not in content:
+                content += import_statement
+                with open(self.init_py_path, 'w') as f:
+                    f.write(content)
+
         except Exception as e:
             print(f"Error writing to file: {e}")       
 
