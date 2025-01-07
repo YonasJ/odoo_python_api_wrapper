@@ -56,12 +56,11 @@ class Klass:
             self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name}) \n"
             self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
             self.fields += f"        return ret\n"
-            self.fields += f"    def get_{rel_prop_name}(self, when_none:{other_class_name}|None=None) -> {other_class_name}:\n"
+            self.fields += f"    def get_{rel_prop_name}(self, when_none:T|None=None) -> {other_class_name}|T:\n"
             if other_class_name != "OdooDataClass":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none)\n"
-            self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
-            self.fields += f"        return ret\n"
+            self.fields += f"        return ret if ret else when_none\n"
             
             if not read_only:
                 self.fields += f"    @{rel_prop_name}.setter\n"
