@@ -119,8 +119,9 @@ class OdooDataClass(OdooWrapperInterface):
             if match:
                 self.wo[obj_field_name] = match
                 return match
-        assert isinstance(value, OdooWrapperInterface) or value is None
-        return value # type: ignore
+        if value:
+            return value # type: ignore
+        return when_none
     
     def set_many2one(self, prop:str, value:'OdooDataClass|None') -> None:  
         self.set_data(prop, value)
