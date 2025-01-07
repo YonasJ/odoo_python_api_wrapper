@@ -130,13 +130,13 @@ class Klass:
                     py_type = py_conversion = 'str'
                 
             if py_conversion == 'date':
-                self.fields += f"    def get_{prop_name}_str(self, format:str = '%Y-%m-%d', when_none:str|None=None) -> str|None:\n"
+                self.fields += f"    def get_{prop_name}_str(self, format:str = '%Y-%m-%d', when_none:str|T=None) -> str|T:\n"
                 self.fields += f"        ret = self.get_value_{py_conversion}(self._{prop_name.upper()})\n"
                 self.fields += f"        if ret is None: \n"
                 self.fields += f"            return when_none\n"
                 self.fields += f"        return ret.strftime(format)\n"
                 
-            self.fields += f"    def get_{prop_name}(self, when_none:{py_type}|None=None) -> {py_type}|None:\n"
+            self.fields += f"    def get_{prop_name}(self, when_none:T=None) -> {py_type}|T:\n"
             self.fields += f"        ret = self.get_value_{py_conversion}(self._{prop_name.upper()})\n"
             self.fields += f"        if ret is None: \n"
             self.fields += f"            return when_none\n"
