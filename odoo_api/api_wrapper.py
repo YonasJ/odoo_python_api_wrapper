@@ -23,11 +23,12 @@ T = TypeVar('T', bound='OdooWrapperInterface')
 class OdooTransaction:    
     def __init__(self, backend:OdooBackend):
         self.backend = backend
-        self.objects:set[OdooWrapperInterface] = set()
+        self.objects:list[OdooWrapperInterface] = list()
         self.verbose_logs = False
   
     def append(self, x:OdooWrapperInterface):
-        self.objects.add(x)
+        if x not in self.objects:
+            self.objects.append(x)
     
     @property 
     def uid(self): return self.backend.uid
@@ -46,7 +47,7 @@ class OdooTransaction:
     def get(self, wrapper:type[T], field:str, value:Any) -> T|None:
         model: str = wrapper._MODEL # type: ignore
         for o in self.objects:
-            if o.model == model and o.get_value(None) == value:
+            if o.model == model and o.get_value(field) == value:
                 if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
                 return o # type: ignore
         
@@ -87,7 +88,7 @@ class OdooTransaction:
         return ret[0]  
 
 
-    def search_raw(self, model, search, fields=[]) -> list[OdooWrapperInterface]:
+    def search_raw(self, model:str, search, fields=[]) -> list[OdooWrapperInterface]:
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         ret = []
         for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
@@ -95,7 +96,7 @@ class OdooTransaction:
             ret.append(ObjectWrapper(self, model,x)) # type: ignore
         return ret
     
-    def read(self, model, id, fields) -> OdooWrapperInterface:
+    def read(self, model:str, id, fields) -> OdooWrapperInterface:
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         from .object_wrapper import ObjectWrapper
         return ObjectWrapper(self, model, rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'read', [[id]], {'fields': fields})[0])# type: ignore
@@ -104,27 +105,29 @@ class OdooTransaction:
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'create', rec) # type: ignore
 
-    def write(self, model, id_pk, rec):
+    def write(self, model:str, id_pk, rec):
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url), allow_none=True)
         if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
             return True
         return False
 
-    def update_many_to(self, model, special_command):
+    def update_many_to(self, model:str, special_command):
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
-    def delete(self, model, ids:list[int]):
+
+    def delete(self, wrapper:type[T], ids:list[int]):
+        model: str = wrapper._MODEL # type: ignore
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', ids):
             return True
         return False
 
-    def execute_action(self, model, action,search):
+    def execute_action(self, model:str, action:str,search):
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True)
         if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, search):
             return True
         return False
-    def execute_action2(self, model, action,p1,p2):
+    def execute_action2(self, model:str, action:str,p1,p2):
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True,verbose=True)
         if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, [p1,p2]):
             return True
@@ -161,7 +164,6 @@ class OdooTransaction:
     def execute_loginj(self):
         return self._execute_actionj("common", "login",[])
 
-    
     def  _get_changes(self, model:str, new_only:bool):
         from .data_class import OdooManyToManyHelper
 
@@ -182,8 +184,9 @@ class OdooTransaction:
                             cm[k] = v.id = ids
                     elif isinstance(v, OdooManyToManyHelper):
                         c = []
-                        for x in v.adds:
-                            c.append((4,x.id,)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
+                        if not new_only:
+                            for x in v.adds:
+                                c.append((4,x.id,)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
                         # v is going to be a parameter to the write call.
                         cm[k] = c
                     else:

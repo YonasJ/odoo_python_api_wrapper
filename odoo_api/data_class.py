@@ -58,6 +58,13 @@ class OdooDataClass(OdooWrapperInterface):
     def id(self,id)->None: # type: ignore
         self.set_value_int("id",id)
     
+    def __eq__(self, other):
+        if not isinstance(other, OdooDataClass):
+            return NotImplemented
+        if self.get_id() is None or other.get_id() is None:
+            return super().__eq__(other)
+        return self.id == other.id
+
     @property
     def transaction (self)->OdooTransaction: # type: ignore
         return self.odoo
@@ -100,7 +107,10 @@ class OdooDataClass(OdooWrapperInterface):
         ret= self.get_value(prop)
         if ret is None or ret is False:
             return None
-        return datetime.strptime(ret, "%Y-%m-%d")
+        try:
+            return datetime.strptime(ret, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return datetime.strptime(ret, "%Y-%m-%d")
 
     T = TypeVar('T')
     def get_many2one(self, prop: str, model_class:type[T], when_none:T|None=None) -> T | None:# -> Any | Any | int | None | OdooWrapperInterface:# -> Any | Any | int | None | OdooWrapperInterface:
@@ -154,21 +164,28 @@ class OdooDataClass(OdooWrapperInterface):
         return tuple(ret)
 
     TTTT = TypeVar('TTTT', bound=OdooWrapperInterface)
-    def append_many2many(self, field_name: str, other_model_class:type[TTTT], new_value:type[TTTT]):
+    def append_many2many(self, field_name: str, other_model_class:type[TTTT], new_value:TTTT|list[TTTT]):
+        if isinstance(new_value, list):
+            for x in new_value:
+                self.append_many2many(field_name, other_model_class, x)
+            return
+        
         assert issubclass(other_model_class, OdooWrapperInterface)
         assert isinstance(new_value, OdooWrapperInterface)
 
-        ids = self.wrapped_oject.get(field_name)
-        ret:list[TT]|None = self.related_records.get(field_name) # type: ignore
-        if ret is None:
-            self.related_records[field_name] = ret = []
+        # ids = self.wrapped_oject.get(field_name)
+        related_records:list[TT]|None = self.related_records.get(field_name) # type: ignore
+        if related_records is None:
+            self.related_records[field_name] = related_records = []
             if self.get_value(field_name):
                 related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
-                ret.extend(related)
-        if not new_value.get_id(): raise ValueError("Cannot append a record that has not been saved yet.")
-        for x in ret:
-            if x.id == new_value.id:
-                return
+                related_records.extend(related)
+        if new_value in related_records:
+            return
+        # if not new_value.get_id(): raise ValueError("Cannot append a record that has not been saved yet.")
+        # for x in ret:
+        #     if x.id == new_value.id:
+        #         return
 
         # Save to changes
         if self.changes.get(field_name) is None:
@@ -177,7 +194,7 @@ class OdooDataClass(OdooWrapperInterface):
         h = self.changes[field_name]
         h.adds.append(new_value)
 
-        ret.append(new_value)
+        related_records.append(new_value)
         self.transaction.commit()
 
     def set_one2many(self):

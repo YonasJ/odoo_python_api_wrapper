@@ -93,7 +93,7 @@ class Klass:
             if other_class_name != "OdooDataClass":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_one2many(self._{prop_name.upper()}, {other_class_name}, '{field['relation_field']}')\n"
-            self.fields += f"        return ret\n"
+            self.fields += f"        return ret\n\n"
         elif db_type == 'many2many':
             # self.imports['typing'] = 'list'
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
@@ -104,10 +104,10 @@ class Klass:
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2many(self._{prop_name.upper()}, {other_class_name}) \n"
             self.fields += f"        return ret\n"
-            self.fields += f"    def {prop_name}_append(self, new_value:{other_class_name}):\n"
+            self.fields += f"    def {prop_name}_append(self, new_value:{other_class_name}|list[{other_class_name}]):\n"
             if other_class_name != "OdooDataClass":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
-            self.fields += f"        self.append_many2many(self._{prop_name.upper()}, {other_class_name}, new_value) \n"
+            self.fields += f"        self.append_many2many(self._{prop_name.upper()}, {other_class_name}, new_value) \n\n"
         else:                    
             
             match db_type:
