@@ -155,7 +155,7 @@ class Klass:
                             
             self.fields += "\n\n"
 
-    def save(self, base_dir):
+    def save(self, base_dir="."):
         
         self.file_name_base = f'{base_dir}/db/{self.name}B.py'
         self.file_name_ext = f'{base_dir}/db/{self.name}.py'
