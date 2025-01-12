@@ -23,13 +23,35 @@ T = TypeVar('T', bound='OdooWrapperInterface')
 class OdooTransaction:    
     def __init__(self, backend:OdooBackend):
         self.backend = backend
-        self.objects:list[OdooWrapperInterface] = list()
+        self.objects:dict[str, OdooWrapperInterface] = {}
         self.verbose_logs = False
-  
-    def append(self, x:OdooWrapperInterface):
-        if x not in self.objects:
-            self.objects.append(x)
     
+    def _key(self, x:OdooWrapperInterface) -> str:
+        return f"{x.model}:{x.id if x.id is not None else id(x)}"
+
+    def append(self, x:OdooWrapperInterface) -> OdooWrapperInterface:
+        key = self._key(x)
+        ret = self.objects.get(key)
+        if ret:
+            return ret 
+        else:
+            self.objects[key] = x
+            return x
+        
+    def extend(self, e:list[OdooWrapperInterface]) -> list[OdooWrapperInterface]:
+        ret = []
+        for x in e:
+            ret.append(self.append(x))
+        return ret
+    
+    def check_in(self, x:OdooWrapperInterface) -> bool:
+        key = self._key(x)
+        if key in self.objects:
+            if id(self.objects[key]) != id(x):
+                raise ValueError(f"Different version in transaction {x.model}:{x.id}")
+            return True
+        return False
+
     @property 
     def uid(self): return self.backend.uid
     
@@ -46,7 +68,13 @@ class OdooTransaction:
   #   record = env['event.registration'].search([('id', '=', 14)])
     def get(self, wrapper:type[T], field:str, value:Any) -> T|None:
         model: str = wrapper._MODEL # type: ignore
-        for o in self.objects:
+        
+        if field == "id":
+            key = f"{model}:id"
+            if key in self.objects:
+                return self.objects[key]# type: ignore
+    
+        for _,o in enumerate(self.objects.values()):
             if o.model == model and o.get_value(field) == value:
                 if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
                 return o # type: ignore
@@ -69,6 +97,7 @@ class OdooTransaction:
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         ret = []
         for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
+            self
             nr:T = wrapper(self, x) # type: ignore
             ret.append(nr) 
         return ret
@@ -115,12 +144,15 @@ class OdooTransaction:
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
 
-    def delete(self, wrapper:type[T], ids:list[int]):
+    def delete(self, wrapper:type[T], ids:list[int]) -> None:
         model: str = wrapper._MODEL # type: ignore
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', ids):
-            return True
-        return False
+        
+        # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
+        #     return True
+        # return False
+        for id in ids:
+            rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [id])
 
     def execute_action(self, model:str, action:str,search):
         rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True)
@@ -169,7 +201,8 @@ class OdooTransaction:
 
         to_create = []
         to_createm:list[OdooWrapperInterface] = []
-        for o in self.objects:
+        for _,o in enumerate(self.objects.values()):
+
             if new_only and o.get_id(None) != None:
                 continue
             if o.changes and o.model == model:
@@ -182,6 +215,7 @@ class OdooTransaction:
                             ids: int = self.create(v.model, [{"name": "New object part of cycle in commit"}]) # type: ignore
                             assert isinstance(ids, int)
                             cm[k] = v.id = ids
+                            self.objects[f"{v.model}:{ids}"] = v
                     elif isinstance(v, OdooManyToManyHelper):
                         c = []
                         if not new_only:
@@ -197,7 +231,7 @@ class OdooTransaction:
         return to_create, to_createm
     
     def commit(self):
-        updated_models = set([m._MODEL for m in self.objects])# type: ignore
+        updated_models = set([m._MODEL for _,m in enumerate(self.objects.values())])# type: ignore
         models = [m for m in self.backend.save_order if m in updated_models]
         for m in updated_models:
             if m not in models:
@@ -213,6 +247,7 @@ class OdooTransaction:
                 
                 for i, new_id in enumerate(ids):
                     to_createm[i].wrapped_oject['id'] = new_id
+                    self.objects[f"{model}:{id}"] = to_createm[i]
 
                     for k,v in to_create[i].items(): # delete any keys that were saved
                         k:str

@@ -29,24 +29,25 @@ class OdooDataClass(OdooWrapperInterface):
     # also note you must have a class property called _MODEL
     def __deepcopy__(self, memo):
         key = f"{self.model}:{self.id}"
-        if f"{self.model}:{self.id}" in memo:
+        if key in memo:
             return memo[key]
-        
-        new_node:OdooDataClass = type(self)(memo['trans']) # type: ignore
+        trans = memo['trans'] # type: OdooTransaction
+
+        if key in trans.objects:
+            return trans.objects[key]
+
+        new_node:OdooDataClass = type(self)(trans) # type: ignore
         memo[key] = new_node
+        trans.objects[key] = new_node # append to the transaction
 
         new_node.wo = copy.deepcopy(self.wo, memo)
-        new_node._changes = self._changes
+        new_node._changes = copy.deepcopy(self._changes, memo)
         new_node.related_records = copy.deepcopy(self.related_records, memo)
-        memo['trans'].append(new_node)
         return new_node
 
     @property
-    def id(self) -> int:
-        ret = self.get_value_int("id")    
-        if not ret:
-            raise ValueError("Null id")
-        return ret
+    def id(self) -> int|None:
+        return self.get_value_int("id")    
     
     def get_id(self, value_if_none=None)->int|None: # type: ignore
         ret = self.get_value_int("id")    
@@ -139,15 +140,30 @@ class OdooDataClass(OdooWrapperInterface):
     TT = TypeVar('TT')
     def get_one2many(self, field_name: str, other_model_class:type[TT], field_in_other_model:str) -> list[TT]:
         assert issubclass(other_model_class, OdooWrapperInterface)
-        ids = self.wrapped_oject.get(field_name)
+        # ids = self.wrapped_oject.get(field_name)
         ret:list[TT]|None = self.related_records.get(field_name) # type: ignore
         if ret is None:
             self.related_records[field_name] = ret = []
             if self.get_value(field_name):
-                related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
-            if self.get_value('id'):
+                db_search = []
+                for x in self.get_value(field_name): # type: ignore
+                    key = f"{other_model_class.model}:{x}"
+                    o = self.transaction.objects.get(key)
+                    if o:
+                        ret.append(o)
+                    else:
+                        db_search.append(x)
+                if db_search:                  
+                    ret.extend(self.transaction.extend(
+                        self.odoo.search(other_model_class,[('id', 'in', db_search)])))
+            elif self.get_value('id'):
                 related = self.odoo.search(other_model_class,[(field_in_other_model, '=', self.id)])
-                ret.extend(related)
+                ret.extend(self.transaction.extend(related))
+
+        # check the transaction of related objects.
+        for _,r in enumerate(self.transaction.objects.values()):
+            if isinstance(r, other_model_class) and r.get_value(field_in_other_model) == self.id:
+                ret.append(r)
         return ret
        
     TTT = TypeVar('TTT')
@@ -159,7 +175,7 @@ class OdooDataClass(OdooWrapperInterface):
             self.related_records[field_name] = ret = []
             if self.get_value(field_name):
                 related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
-                ret.extend(related)
+                ret.extend(self.transaction.extend(related))
 
         return tuple(ret)
 
@@ -179,7 +195,7 @@ class OdooDataClass(OdooWrapperInterface):
             self.related_records[field_name] = related_records = []
             if self.get_value(field_name):
                 related = self.odoo.search(other_model_class,[('id', 'in', self.get_value(field_name))])
-                related_records.extend(related)
+                related_records.extend(self.transaction.extend(related))
         if new_value in related_records:
             return
         # if not new_value.get_id(): raise ValueError("Cannot append a record that has not been saved yet.")

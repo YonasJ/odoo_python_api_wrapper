@@ -46,15 +46,22 @@ class Klass:
             else:
                 rel_prop_name = prop_name
 
+
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
-                
+            
+            always_set_for_type_checking = (field['required'] or 
+                                            "CASCADE" in str(field['on_delete']).upper() or
+                                            "RESTRICT" in str(field['on_delete']).upper()
+                                            ) 
+
             self.fields += f"    @property # many2one\n"
-            self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}:\n"
+            self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}{"|None" if not always_set_for_type_checking else ""} : # required: {field['required']}, on delete: {field['on_delete']}\n"
             if other_class_name != "OdooDataClass":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name}) \n"
-            self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
+            if always_set_for_type_checking:
+                self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
             self.fields += f"        return ret\n"
             self.fields += f"    def get_{rel_prop_name}(self, when_none:T|None=None) -> {other_class_name}|T:\n"
             if other_class_name != "OdooDataClass":
@@ -64,7 +71,7 @@ class Klass:
             
             if not read_only:
                 self.fields += f"    @{rel_prop_name}.setter\n"
-                self.fields += f"    def {rel_prop_name}(self, value:{other_class_name}) -> None:\n"
+                self.fields += f"    def {rel_prop_name}(self, value:{other_class_name}|None) -> None:\n"
                 self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
 
             py_type = "int"
@@ -78,12 +85,7 @@ class Klass:
             self.fields += f"            if ret2:\n"
             self.fields += f"                return ret2\n"
             self.fields += f"        return when_none\n"
-
-            self.fields += f"    @property\n"
-            self.fields += f"    def {rel_prop_name}_id(self) -> {py_type}:\n"
-            self.fields += f"        ret = self.get_{rel_prop_name}_id()\n"
-            self.fields += f"        if ret is None: raise ValueError(f'Key {prop_name} is not set.')\n"
-            self.fields += f"        return ret\n\n"            
+       
         elif db_type == 'one2many':
             # self.imports['typing'] = 'list'
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
@@ -141,12 +143,23 @@ class Klass:
             self.fields += f"            return when_none\n"
             self.fields += f"        return ret\n"
 
-
-            self.fields += f"    @property\n"
-            self.fields += f"    def {prop_name}(self) -> {py_type}:\n"
-            self.fields += f"        ret = self.get_{prop_name}()\n"
-            self.fields += f"        if ret is None: raise ValueError(f'Key {prop_name} is not set.')\n"
-            self.fields += f"        return ret\n"
+            if db_type == 'float' or db_type == 'integer' or db_type == 'char' or field['required']:
+                self.fields += f"    @property # use get version to check for none, will return 0 or empty string in the property.\n"
+                self.fields += f"    def {prop_name}(self) -> {py_type}:\n"
+                self.fields += f"        ret = self.get_{prop_name}()\n"
+                if db_type == 'float':
+                    self.fields += f"        if ret is None: return 0.00\n"
+                if db_type == 'integer':
+                    self.fields += f"        if ret is None: return 0\n"
+                if db_type == 'char':
+                    self.fields += f"        if ret is None: return ''\n"
+                self.fields += f"        return ret\n"
+            else:
+                self.fields += f"    @property\n"
+                self.fields += f"    def {prop_name}(self) -> {py_type}|None:\n"
+                self.fields += f"        ret = self.get_{prop_name}()\n"
+                # self.fields += f"        if ret is None: raise ValueError(f'Key {prop_name} is not set.')\n"
+                self.fields += f"        return ret\n"
                 
             if not read_only:            
                 self.fields += f"    @{prop_name}.setter\n"
