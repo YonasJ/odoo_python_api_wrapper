@@ -200,8 +200,8 @@ class Klass:
         header += f"    _MODEL = '{self.model}'\n\n"
 
 
-        header += f"    def __init__(self, odoo:OdooTransaction, wo:dict[str,{self.add_import('typing','Any')}]|None = None):\n"
-        header += f"        super().__init__(odoo, self._MODEL, wo)\n"
+        header += f"    def __init__(self, trans:OdooTransaction, id:int|None, wo:dict[str,{self.add_import('typing','Any')}]|None):\n"
+        header += f"        super().__init__(trans, self._MODEL, id, wo)\n"
         header += f"\n"        
         
         imports = ""

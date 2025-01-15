@@ -3,14 +3,16 @@ from abc import ABC, abstractmethod
 import copy
 import inspect
 import re
-from typing import TYPE_CHECKING, TypeVar
+import threading
 from .data_class_interface import OdooWrapperInterface
+from typing import TYPE_CHECKING, TypeVar
 if TYPE_CHECKING:
     from .data_class import OdooDataClass
     from .data_class import OdooManyToManyHelper
 
-
+from collections import defaultdict
 from typing import Any
+from mixt import Timer
 import xmlrpc.client
 import json
 import random
@@ -21,36 +23,60 @@ from .keepass_passwords import KeePass
 T = TypeVar('T', bound='OdooWrapperInterface')
 
 class OdooTransaction:    
+    lock = threading.RLock()
+
     def __init__(self, backend:OdooBackend):
         self.backend = backend
         self.objects:dict[str, OdooWrapperInterface] = {}
+        self.cache:dict[str, OdooWrapperInterface] = {}
+        self.deletes:list[OdooWrapperInterface] = []
         self.verbose_logs = False
     
     def _key(self, x:OdooWrapperInterface) -> str:
-        return f"{x.model}:{x.id if x.id is not None else id(x)}"
+        if not x.id: raise ValueError(f"Object must have an ID to be saved {x}")
+        return f"{x.model}:{x.id}"
+    def _gen_working_id(self) -> int:
+        with self.lock:
+            self.backend.working_id -= 1
+            return self.backend.working_id
 
-    def append(self, x:OdooWrapperInterface) -> OdooWrapperInterface:
-        key = self._key(x)
-        ret = self.objects.get(key)
-        if ret:
-            return ret 
-        else:
-            self.objects[key] = x
-            return x
-        
-    def extend(self, e:list[OdooWrapperInterface]) -> list[OdooWrapperInterface]:
-        ret = []
-        for x in e:
-            ret.append(self.append(x))
-        return ret
+    # Append the object to the transacition, if it already exists, return the existing object
+    def append(self, x:T) -> T:
+        if x.transaction != self:
+            x = deep_copy = copy.deepcopy(x, memo={'trans':self}) # type: ignore
+
+        # print(f"Debugging IDs: {ids_for_debugging}")
+
+        with self.lock:
+            key = self._key(x)
+            ret = self.objects.get(key)
+            if ret:
+                return ret # type: ignore
+            elif x.transaction != self:
+                deep_copy = copy.deepcopy(x, memo={'trans':self}) # type: ignore
+                # No need to add to the transaction as it will have added itself in the constructor.
+                return deep_copy
+            else:
+                self.objects[key] = x
+                self.cache[key] = x
+                self.backend.cache[key] = x
+                return x
+
+    def extend(self, e:list[T]) -> list[T]:
+        with self.lock:
+            ret = []
+            for x in e:
+                ret.append(self.append(x))
+            return ret
     
     def check_in(self, x:OdooWrapperInterface) -> bool:
-        key = self._key(x)
-        if key in self.objects:
-            if id(self.objects[key]) != id(x):
-                raise ValueError(f"Different version in transaction {x.model}:{x.id}")
-            return True
-        return False
+        with self.lock:
+            key = self._key(x)
+            if key in self.objects:
+                if id(self.objects[key]) != id(x):
+                    raise ValueError(f"Different version in transaction {x.model}:{x.id}")
+                return True
+            return False
 
     @property 
     def uid(self): return self.backend.uid
@@ -67,125 +93,224 @@ class OdooTransaction:
        
   #   record = env['event.registration'].search([('id', '=', 14)])
     def get(self, wrapper:type[T], field:str, value:Any) -> T|None:
-        model: str = wrapper._MODEL # type: ignore
+        with self.lock:
+            model: str = wrapper._MODEL # type: ignore
+            
+            if field == "id":
+                assert value
+                key = f"{model}:{value}"
+                if key in self.cache:
+                    return self.cache[key]# type: ignore
         
-        if field == "id":
-            key = f"{model}:id"
-            if key in self.objects:
-                return self.objects[key]# type: ignore
-    
-        for _,o in enumerate(self.objects.values()):
-            if o.model == model and o.get_value(field) == value:
-                if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
-                return o # type: ignore
-        
-        if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache miss)")
-        ret = self.search(wrapper, [(field, "=", value)],getting=True)
-        if ret:
-            return ret[0]
+            for _,o in enumerate(self.cache.values()):
+                if o.model == model and o.get_value(field) == value:
+                    if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
+                    return o # type: ignore
+            for _,o in enumerate(self.backend.cache.values()):
+                if o.model == model and o.get_value(field) == value:
+                    if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (backend cache hit)")
+                    return self.append(o) # type: ignore
+            
+            if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache miss)")
+            ret = self.search(wrapper, [(field, "=", value)],getting=True)
+            if ret:
+                return ret[0]
+            
+    def _matches_search(self, c:OdooWrapperInterface, search:list[tuple[str,str,Any]]):
+        for s in search:
+            if s[1] == "=":
+                if c.get_value(s[0]) != s[2]:
+                    return False
+            elif s[1] == "in":
+                if c.get_value(s[0]) not in s[2]:
+                    return False
+            else:
+                raise ValueError(f"Unknown search operator {s[1]}")
+        return True
+  #   record = env['event.registration'].search([('id', '=', 14)])
+    def get2(self, wrapper:type[T], search:list[tuple[str,str,Any]]) -> T|None:
+        with self.lock:
+            model: str = wrapper._MODEL # type: ignore
+            only_local_search = True
+
+            if len(search) == 1 and search[0][0] == "id" and search[0][1] == "=":
+                key = f"{model}:{search[0][2]}"
+                if key in self.cache:
+                    return self.cache[key]# type: ignore
+                if key in self.backend.cache:
+                    return self.append(self.backend.cache[key])# type: ignore
+            else:
+                for cache in [self.cache, self.backend.cache]:
+                    for x in cache.values():
+                        if x.model != model:
+                            continue
+                        if self._matches_search(x, search):
+                            return self.append(x) # type: ignore
+
+            # Confirmed cache miss, record is not saved.
+
+            if len(search) == 1 and search[0][0] == "id" and search[0][1] == "=" and search[0][2] < 0:
+                return None
+
+            if self.verbose_logs: print(f"Get2: {model}  -- {search} (cache miss)")
+            ret = self.search(wrapper, search,getting=True)
+            if ret:
+                return ret[0]
 
   #   record = env['event.registration'].search([('id', '=', 14)])
-    def search(self, wrapper:type[T], search, fields=[], getting=False) -> list[T]:
-        model: str = wrapper._MODEL # type: ignore
-        if self.verbose_logs:
-            if (search[0][0] == "id" and search[0][1] == "=") and not getting:
-                print(f"Search: {model}  -- {search} (opportunity)")
-            else: 
-                print(f"Search: {model}  -- {search}")
+    def search(self, wrapper:type[T], search, fields=[], getting:bool=False) -> list[T]:
+        p = '  ' if getting else ''
+
+        with self.lock:
+            model: str = wrapper._MODEL # type: ignore
+            # Manually search for items in transaction if searching for an unsaved record.
+            if len(search) == 1 and search[0][1] == "=" and isinstance(search[0][2], int) and search[0][2] < 0:
+                ret = []
+                for x in self.cache.values():
+                    if x.model != model:
+                        continue
+                    if self._matches_search(x, search):
+                        ret.append(x)
+
+                if self.verbose_logs: print(f"{p}Search: {model}  -- {search} (searched local for -ve id)")
+                return ret
+            
+        with Timer() as t:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+            ret = []
+            for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
+                with self.lock:
+                    id = x["id"]
+                    del x["id"]
+                    nr:T = wrapper(self, id, x) # type: ignore
+                    ret.append(nr) 
+
+            if self.verbose_logs and search in [ # these are search, not get. And they could be lazy. It is fetching them just in case.
+                    [('name', '=', 'Kelsey Janssen'), ('function', 'in', ['Owner', 'Manager', 'Consultant'])],
+                    [('name', '=', 'Sharon Smith'), ('function', 'in', ['Owner', 'Manager', 'Consultant'])]
+                ]:
+                print("debug")
+            if self.verbose_logs and search not in[
+                    [('related_cto_numbers', '=', False)],
+                    ['&', ('sync_date', '=', False), ('name', '!=', False)],
+                    ['&', ('matched_status', '=', 'new'), ('related_cto_numbers', '!=', 'No match')],
+
+                ]:
+
+                if (search[0][0] == "id" and search[0][1] == "=") and not getting:
+                    print(f"{p}Search {t.elapsed:2.1f}: {model}  -- {search} (opportunity)")
+                else: 
+                    print(f"{p}Search {t.elapsed:2.1f}: {model}  -- {search}")
+                    pass
+                if len(search) == 1 and search[0][1] == "=" and isinstance(search[0][2], int) and search[0][2] < 0:
+                    print(f"{p}Search {t.elapsed:2.1f}: {model}  -- {search} (negative id)")
                 pass
-        
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        ret = []
-        for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
-            self
-            nr:T = wrapper(self, x) # type: ignore
-            ret.append(nr) 
-        return ret
+
+            return ret
 
     def search_singleton(self, wrapper:type[T], search, fields=[]) -> T|None: 
-        ret = self.search(wrapper, search, fields)
-        if len(ret) == 0:
-            return None
-        if len(ret) > 1:
-            raise ValueError(f"Expected 1 record, got {len(ret)}")
-        return ret[0]  
+        with self.lock:
+            ret = self.search(wrapper, search, fields)
+            if len(ret) == 0:
+                return None
+            if len(ret) > 1:
+                raise ValueError(f"Expected 1 record, got {len(ret)}")
+            return ret[0]  
 
     def search_first(self, wrapper:type[T], search, fields=[]) -> T|None: 
-        ret = self.search(wrapper, search, fields)
-        if len(ret) == 0:
-            return None
-        return ret[0]  
+        with self.lock:
+            ret = self.search(wrapper, search, fields)
+            if len(ret) == 0:
+                return None
+            return ret[0]  
 
 
     def search_raw(self, model:str, search, fields=[]) -> list[OdooWrapperInterface]:
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        ret = []
-        for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
-            from .object_wrapper import ObjectWrapper
-            ret.append(ObjectWrapper(self, model,x)) # type: ignore
-        return ret
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+            ret = []
+            for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
+                from .object_wrapper import ObjectWrapper
+                ret.append(ObjectWrapper(self, model,x)) # type: ignore
+            return ret
     
     def read(self, model:str, id, fields) -> OdooWrapperInterface:
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        from .object_wrapper import ObjectWrapper
-        return ObjectWrapper(self, model, rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'read', [[id]], {'fields': fields})[0])# type: ignore
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+            from .object_wrapper import ObjectWrapper
+            return ObjectWrapper(self, model, rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'read', [[id]], {'fields': fields})[0])# type: ignore
     
     def create(self, model:str, rec:list[dict[str,Any]]) -> list[int]:
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'create', rec) # type: ignore
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+            return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'create', rec) # type: ignore
 
     def write(self, model:str, id_pk, rec):
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url), allow_none=True)
-        if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
-            return True
-        return False
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url), allow_none=True)
+            if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
+                return True
+            return False
 
     def update_many_to(self, model:str, special_command):
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+            return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
 
-    def delete(self, wrapper:type[T], ids:list[int]) -> None:
-        model: str = wrapper._MODEL # type: ignore
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+    def delete(self, to_delete:OdooWrapperInterface) -> None:
+        if to_delete.id < 0:
+            self.deletes.append(to_delete)
+        self.cache.pop(self._key(to_delete))
+        self.objects.pop(self._key(to_delete))
+        self.backend.cache.pop(self._key(to_delete))
+
+    def execute_delete(self, wrapper:type[T], ids:list[int]) -> None:
+        with self.lock:
+            model: str = wrapper._MODEL # type: ignore
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         
-        # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
-        #     return True
-        # return False
-        for id in ids:
-            rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [id])
+            # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
+            #     return True
+            # return False
+            for id in ids:
+                if id:
+                    rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [id])
 
     def execute_action(self, model:str, action:str,search):
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True)
-        if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, search):
-            return True
-        return False
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True)
+            if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, search):
+                return True
+            return False
     def execute_action2(self, model:str, action:str,p1,p2):
-        rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True,verbose=True)
-        if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, [p1,p2]):
-            return True
-        return False
+        with self.lock:
+            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True,verbose=True)
+            if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, [p1,p2]):
+                return True
+            return False
             
       
     def _execute_actionj(self, rpc_service, rpc_method, params):
-        url = f"{self.url}/jsonrpc"
-        data = {
-            "jsonrpc": "2.0",
-            "method": "call",
-            "params": {"service": rpc_service, "method": rpc_method, "args": 
-                       [self.db, 
-                        self.uid if rpc_service != "common" else self.backend.username, 
-                        self.api_key]+
-                        params},
-            "id": random.randint(0, 1000000000),
-        }
-        req = urllib.request.Request(url=url, data=json.dumps(data).encode(), headers={
-            "Content-Type":"application/json",
-        })
-        reply = json.loads(urllib.request.urlopen(req).read().decode('UTF-8'))
-        if reply.get("error"):
-            raise Exception(reply["error"])
-        
-        return reply["id"]
+        with self.lock:
+            url = f"{self.url}/jsonrpc"
+            data = {
+                "jsonrpc": "2.0",
+                "method": "call",
+                "params": {"service": rpc_service, "method": rpc_method, "args": 
+                        [self.db, 
+                            self.uid if rpc_service != "common" else self.backend.username, 
+                            self.api_key]+
+                            params},
+                "id": random.randint(0, 1000000000),
+            }
+            req = urllib.request.Request(url=url, data=json.dumps(data).encode(), headers={
+                "Content-Type":"application/json",
+            })
+            reply = json.loads(urllib.request.urlopen(req).read().decode('UTF-8'))
+            if reply.get("error"):
+                raise Exception(reply["error"])
+            
+            return reply["id"]
 
     def execute_actionj(self, model, method, params):
         return self._execute_actionj("object", "execute", [model,method]+params)
@@ -195,95 +320,190 @@ class OdooTransaction:
 
     def execute_loginj(self):
         return self._execute_actionj("common", "login",[])
-
-    def  _get_changes(self, model:str, new_only:bool):
+    def _get_changes_early_save(self, v:OdooWrapperInterface):
         from .data_class import OdooManyToManyHelper
+        new_obj = {}
+        old_key: str = self._key(v)
+        v_changes = dict(v.changes)
+        for ck,cv in list(v.changes.items()): #object's is changed when new keys are generated for saved objects.
+            if isinstance(cv, OdooWrapperInterface):
+                if cv.id and cv.id >= 0:
+                    v.wrapped_oject[ck] = new_obj[ck] = cv.id
+                    del v.changes[ck]
+            elif isinstance(v, OdooManyToManyHelper):
+                pass
+            elif ck == "id":
+                raise ValueError("ID should not be in changes")
+                del v.changes[ck] # don't pass this to create.
+            else:
+                v.wrapped_oject[ck] = new_obj[ck] = cv
+                del v.changes[ck]
 
-        to_create = []
-        to_createm:list[OdooWrapperInterface] = []
-        for _,o in enumerate(self.objects.values()):
+        ids: int = self.create(v.model, [new_obj]) # type: ignore
+        assert isinstance(ids, int)
 
-            if new_only and o.get_id(None) != None:
-                continue
-            if o.changes and o.model == model:
-                cm: dict[str,Any] = {}
-                for k, v in o.changes.items():
-                    if isinstance(v, OdooWrapperInterface):
-                        if v.get_id():
-                            cm[k] = v.id
-                        else:
-                            ids: int = self.create(v.model, [{"name": "New object part of cycle in commit"}]) # type: ignore
-                            assert isinstance(ids, int)
-                            cm[k] = v.id = ids
-                            self.objects[f"{v.model}:{ids}"] = v
-                    elif isinstance(v, OdooManyToManyHelper):
-                        c = []
-                        if not new_only:
-                            for x in v.adds:
-                                c.append((4,x.id,)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
-                        # v is going to be a parameter to the write call.
-                        cm[k] = c
-                    else:
-                        cm[k] = v
-                to_create.append(cm)  
-                to_createm.append(o)  
-                    
-        return to_create, to_createm
+        # Move it to the new key.
+        del self.objects[old_key]
+        del self.cache[old_key]
+        v.wrapped_oject['id'] = ids
+        assert 'id' not in v.changes # was cleaned by the copy.
+        self.objects[self._key(v)] = v
+        self.cache[self._key(v)] = v
+        return v.id
     
+    def  _get_changes(self, model:str, new_only:bool):
+        with self.lock:
+            from .data_class import OdooManyToManyHelper
+
+            to_create = []
+            to_createm:list[OdooWrapperInterface] = []
+            for _,o in list(enumerate(self.objects.values())): #object's is changed when new keys are generated for saved objects.
+                assert o.transaction == self, f"Object must be in the transaction it is being saved {o}"
+                assert o.id, "Object must have an ID. Negative before save."
+                if new_only and o.id >= 0: # Negative ID is working id.
+                    continue
+                if o.changes and o.model == model:
+                    cm: dict[str,Any] = {}
+                    o_changes = dict(o.changes)
+
+                    for k, v in o.changes.items():
+                        if k == "id":
+                            continue # don't update/create id's
+                        if isinstance(v, OdooWrapperInterface):
+                            assert v.id
+                            if v.id >= 0:
+                                cm[k] = v.id
+                            else:
+                                cm[k] = self._get_changes_early_save(v)
+
+                        elif isinstance(v, OdooManyToManyHelper):
+                            c = []
+                            if not new_only:
+                                for x in v.adds:
+                                    assert x.id
+                                    if x.id < 0:
+                                        self._get_changes_early_save(x)
+                                    assert x.id>0
+                                    c.append((4,x.id)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
+                            # v is going to be a parameter to the write call.
+                            cm[k] = c
+                        else:
+                            cm[k] = v
+                    to_create.append(cm)  
+                    to_createm.append(o)  
+                        
+            return to_create, to_createm
+    
+    def __find_duplicates(self):
+        return
+        duplicates = []
+        keys = list(self.objects.keys())
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                if id(self.objects[keys[i]]) == id(self.objects[keys[j]]):
+                    duplicates.append((keys[i], keys[j]))
+        if duplicates:
+            print(f"Found {len(duplicates)} duplicates")
+        return duplicates
+
     def commit(self):
-        updated_models = set([m._MODEL for _,m in enumerate(self.objects.values())])# type: ignore
-        models = [m for m in self.backend.save_order if m in updated_models]
-        for m in updated_models:
-            if m not in models:
-                models.append(m)
-        
-        for model in models: 
-            to_create,to_createm = self._get_changes(model, True)
+        self.__find_duplicates()
 
-            if to_create:
-                # print(f"createing {model} = {len(to_create)}")
-                # print(f"createing {model}")
-                ids = self.create(model, [to_create]) # type: ignore
-                
-                for i, new_id in enumerate(ids):
-                    to_createm[i].wrapped_oject['id'] = new_id
-                    self.objects[f"{model}:{id}"] = to_createm[i]
+        with self.lock:
+            updated_models = set([m._MODEL for _,m in enumerate(self.objects.values())])# type: ignore
+            models = [m for m in self.backend.save_order if m in updated_models]
+            for m in updated_models:
+                if m not in models:
+                    models.append(m)
+            
+            for model in models: 
+                to_create,to_createm = self._get_changes(model, True)
 
-                    for k,v in to_create[i].items(): # delete any keys that were saved
-                        k:str
-                        to_createm[i].wrapped_oject[k] = v
-                        # if k.endswith("_id") and to_createm[i].changes[k[:-3]]:
-                        #     del to_createm[i].changes[k[:-3]]    
-                        # else:
-                        #     del to_createm[i].changes[k]
-                        del to_createm[i].changes[k]
-                # print(f"created {to_create}")
-                for c in to_createm:
-                    for ffk in c.related_records.values(): # type: ignore
-                        for ff in ffk:
-                            for _, p in inspect.getmembers(type(ff)):  # Iterate directly
-                                if isinstance(p, property): 
-                                    try:
-                                        other =p.fget(ff) # type: ignore
-                                        if other == c:
-                                            p.fset(ff,c) # type: ignore
-                                    except ValueError as e:                        
-                                        pass
+                if to_create:
+                    # print(f"createing {model} = {len(to_create)}")
+                    # print(f"createing {model}")
 
-            to_update,to_updatem = self._get_changes(model, False)
+                    #
+                    # PART 1: CREATE NEW RECORDS
+                    #
+                    ids = self.create(model, [to_create]) # type: ignore
+                    for i, new_id in enumerate(ids):
+                        old_key = self._key(to_createm[i])
+                        del self.objects[old_key]
+                        del self.cache[old_key]
 
-            for i, em in enumerate(to_update):
-                if em:
-                    emdo = to_updatem[i]  
-                    self.write(model, emdo.id, em)
+                        to_createm[i].id = new_id
 
-                    for k,v in to_update[i].items(): # delete any keys that were saved
-                        to_updatem[i].wrapped_oject[k] = v
-                        # if k.endswith("_id") and to_updatem[i].changes[k[:-3]]:
-                        #     del to_updatem[i].changes[k[:-3]]    
-                        # else:
-                        #     del to_updatem[i].changes[k]     
-                        del to_updatem[i].changes[k]     
+                        new_key = self._key(to_createm[i])
+                        self.objects[new_key] = to_createm[i]
+                        self.cache[new_key] = to_createm[i]
+
+                        for k,v in to_create[i].items(): # delete any keys that were saved
+                            k:str
+                            to_createm[i].wrapped_oject[k] = v
+                            # if k.endswith("_id") and to_createm[i].changes[k[:-3]]:
+                            #     del to_createm[i].changes[k[:-3]]    
+                            # else:
+                            #     del to_createm[i].changes[k]
+                            assert k != "id"
+                            del to_createm[i].changes[k]
+                            self.__find_duplicates()
+                    # print(f"created {to_create}")
+
+                    #
+                    # PART 2: RE-FETCH RELATED RECORDS FROM THE DATABASE??? 
+                    #
+
+                    for c in to_createm:
+                        for ffk in c.related_records.values(): # type: ignore
+                            for ff in ffk:
+                                for _, p in inspect.getmembers(type(ff)):  # Iterate directly
+                                    if isinstance(p, property): 
+                                        try:
+                                            other =p.fget(ff) # type: ignore
+                                            if other == c:
+                                                p.fset(ff,c) # type: ignore
+                                        except ValueError as e:                        
+                                            pass
+
+
+                for x in to_createm:
+                    self.backend.cache[self._key(x)] = copy.deepcopy(x, memo={'trans':self})# type: ignore
+
+                to_update,to_updatem = self._get_changes(model, False)
+
+                for i, em in enumerate(to_update):
+                    if em:
+                        emdo = to_updatem[i]  
+                        self.write(model, emdo.id, em)
+
+                        for k,v in to_update[i].items(): # delete any keys that were saved
+                            to_updatem[i].wrapped_oject[k] = v
+
+                            try:
+                                del to_updatem[i].changes[k]    
+                            except KeyError as e:
+                                if not k == "category_id" and not k == "consultant": # Many to many puts 2 changes in the list...
+                                    raise e  # an error here may indicate a transaction shared between threads...
+                for x in to_updatem:
+                    self.backend.cache[self._key(x)] = copy.deepcopy(x, memo={'trans':self})# type: ignore
+
+            delete_groups = defaultdict(list)
+            for d in self.deletes:
+                delete_groups[d.__class__].append(d.id)
+
+            # Delete all the IDs in each class
+            for cls, ids in delete_groups.items():
+                self.execute_delete(cls, ids)
+
+            self.deletes.clear()
+            self.cache.clear()
+            self.objects.clear()
+            
+
+
+# TODO: Create a TRANS_ID in the object that doesn't change once mappeed into a trans.
+# USE THAT FOR EQUALS as well.
 
 class OdooBackend:
     def __init__(self, db, save_order = []):
@@ -301,6 +521,9 @@ class OdooBackend:
         self._lazy_uid:str|None = None
         
         self.save_order = save_order
+
+        self.cache:dict[str, OdooWrapperInterface] = {}
+        self.working_id = -100
 
 
     @property

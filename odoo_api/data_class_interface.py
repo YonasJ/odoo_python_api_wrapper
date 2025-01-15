@@ -11,11 +11,7 @@ if TYPE_CHECKING:
 class OdooWrapperInterface(ABC):
     @property
     @abstractmethod
-    def id(self)->int|None: # type: ignore
-        pass
-    
-    @abstractmethod
-    def get_id(self, value_if_none=None)->int|None: # type: ignore
+    def id(self)->int: # type: ignore
         pass
     @id.setter
     @abstractmethod
