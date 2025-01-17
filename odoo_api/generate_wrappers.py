@@ -54,7 +54,7 @@ class Klass:
                                             "CASCADE" in str(field['on_delete']).upper() or
                                             "RESTRICT" in str(field['on_delete']).upper()
                                             ) 
-
+            self.field_desc += f"    # {prop_name} is a many2one field of type {other_class_name}\n"
             self.fields += f"    @property # many2one\n"
             self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}{"|None" if not always_set_for_type_checking else ""} : # required: {field['required']}, on delete: {field['on_delete']}\n"
             if other_class_name != "OdooDataClass":
@@ -72,6 +72,8 @@ class Klass:
             if not read_only:
                 self.fields += f"    @{rel_prop_name}.setter\n"
                 self.fields += f"    def {rel_prop_name}(self, value:{other_class_name}|None) -> None:\n"
+                self.fields += f"        self.set_{rel_prop_name}(value)\n"
+                self.fields += f"    def set_{rel_prop_name}(self, value:{other_class_name}|None) -> None:\n"
                 self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
 
             py_type = "int"
@@ -89,9 +91,12 @@ class Klass:
         elif db_type == 'one2many':
             # self.imports['typing'] = 'list'
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            self.field_desc += f"    # {prop_name} is a one2many field of type {other_class_name} \n"
             self.type_only_forward_imports[f"{other_class_name}"] = other_class_name
             self.fields += f"    @property # one2many\n"
             self.fields += f"    def {prop_name}(self) -> list[{other_class_name}]:\n"
+            self.fields += f"        return self.get_{prop_name}()\n"
+            self.fields += f"    def get_{prop_name}(self) -> list[{other_class_name}]:\n"
             if other_class_name != "OdooDataClass":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_one2many(self._{prop_name.upper()}, {other_class_name}, '{field['relation_field']}')\n"
@@ -99,6 +104,7 @@ class Klass:
         elif db_type == 'many2many':
             # self.imports['typing'] = 'list'
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            self.field_desc += f"    # {prop_name} is a many2many field of type {other_class_name} \n"
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
             self.fields += f"    @property # many2many\n"
             self.fields += f"    def {prop_name}(self) -> tuple[{other_class_name}]:\n"
@@ -129,6 +135,8 @@ class Klass:
                 case 'char':  py_type = py_conversion = 'str'
                 case _:  # Default case
                     py_type = py_conversion = 'str'
+
+            self.field_desc += f"    # {prop_name} is a {py_type} field  \n"
                 
             if py_conversion == 'date':
                 self.fields += f"    def get_{prop_name}_str(self, format:str = '%Y-%m-%d', when_none:str|T=None) -> str|T:\n"
@@ -174,6 +182,7 @@ class Klass:
         self.file_name_ext = f'{base_dir}/db/{self.name}.py'
         self.init_py_path = f"{base_dir}/db/__init__.py"
 
+        self.field_desc = ""
         self.fields = ""
         
         for emodel in self.odoo.search_raw('ir.model',[("model","=", self.model)]):
@@ -218,7 +227,7 @@ class Klass:
             imports += f"from {k} import {v}\n"
 
         
-        complete_class = imports+header+self.fields
+        complete_class = imports+header+self.field_desc+self.fields
 
         try:
             with open(self.file_name_base, 'w') as f:

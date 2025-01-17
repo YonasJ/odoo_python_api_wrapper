@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from collections import defaultdict
 from typing import Any
-from mixt import Timer
+from .utils import Timer
 import xmlrpc.client
 import json
 import random
@@ -31,7 +31,7 @@ class OdooTransaction:
         self.cache:dict[str, OdooWrapperInterface] = {}
         self.deletes:list[OdooWrapperInterface] = []
         self.verbose_logs = False
-    
+        self.aborted = False
     def _key(self, x:OdooWrapperInterface) -> str:
         if not x.id: raise ValueError(f"Object must have an ID to be saved {x}")
         return f"{x.model}:{x.id}"
@@ -206,7 +206,7 @@ class OdooTransaction:
                     print(f"{p}Search {t.elapsed:2.1f}: {model}  -- {search} (negative id)")
                 pass
 
-            return ret
+        return ret
 
     def search_singleton(self, wrapper:type[T], search, fields=[]) -> T|None: 
         with self.lock:
@@ -405,9 +405,13 @@ class OdooTransaction:
         if duplicates:
             print(f"Found {len(duplicates)} duplicates")
         return duplicates
+    
+    def abort(self) -> None:
+        self.aborted = True
 
-    def commit(self):
-        self.__find_duplicates()
+    def commit(self) -> None:
+        if self.aborted:
+            raise ValueError("Transaction was aborted")
 
         with self.lock:
             updated_models = set([m._MODEL for _,m in enumerate(self.objects.values())])# type: ignore
@@ -495,6 +499,8 @@ class OdooTransaction:
             # Delete all the IDs in each class
             for cls, ids in delete_groups.items():
                 self.execute_delete(cls, ids)
+
+            self.backend.cache.update(self.cache)
 
             self.deletes.clear()
             self.cache.clear()

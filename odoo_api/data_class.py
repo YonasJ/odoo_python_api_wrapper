@@ -4,7 +4,7 @@ import time
 from typing import Any, TypeVar
 from .api_wrapper import OdooTransaction
 from .data_class_interface import OdooWrapperInterface
-from mixt import SingleList
+from .utils import SingleList
 class OdooManyToManyHelper:
     def __init__(self):
         self.adds:list[OdooWrapperInterface] = []
@@ -30,6 +30,7 @@ class OdooDataClass(OdooWrapperInterface):
             self._id = id
         else:
             self._id = trans._gen_working_id()
+        self._hash = hash((self.__class__.__name__, self.id))
 
         self.trans.append(self)
 
@@ -68,6 +69,9 @@ class OdooDataClass(OdooWrapperInterface):
             raise ValueError("Cannot compare objects without id")
             # return super().__eq__(other)
         return self._id == other._id and self.model == other.model
+
+    def __hash__(self):
+        return self._hash
 
 
     def delete(self):
@@ -186,40 +190,32 @@ class OdooDataClass(OdooWrapperInterface):
 
         return tuple(ret)
 
-    def append_many2many(self, field_name: str, other_model_class:type[T], new_value:T|list[T]):
-        if isinstance(new_value, list):
-            for x in new_value:
-                self.append_many2many(field_name, other_model_class, x)
-            return
+    def append_many2many(self, field_name: str, other_model_class:type[T], new_values:T|list[T]):
+        if not isinstance(new_values, list):
+            new_values = [new_values]
+
         assert issubclass(other_model_class, OdooWrapperInterface)
-        assert isinstance(new_value, OdooDataClass)
 
-        if new_value.transaction != self.transaction:
-            raise ValueError("Cannot append a value that is not in the same transaction.")
+        rr_list = self.related_records.get(field_name)
+        if not rr_list:
+            self.get_many2many(field_name, other_model_class)
+            rr_list = self.related_records.get(field_name)
+            if rr_list is None:
+                raise ValueError("Could not get related records")
 
-        # ids = self.wrapped_oject.get(field_name)
-        related_records:list[TT]|None = self.related_records.get(field_name) # type: ignore
-        if related_records is None:
-            self.related_records[field_name] = related_records = []
-            if self.get_value(field_name):
-                related = self.trans.search(other_model_class,[('id', 'in', self.get_value(field_name))])
-                related_records.extend(self.transaction.extend(related))
-        if new_value in related_records:
-            return
-        # if not new_value.get_id(): raise ValueError("Cannot append a record that has not been saved yet.")
-        # for x in ret:
-        #     if x.id == new_value.id:
-        #         return
+        for new_value in new_values:
+            assert isinstance(new_value, OdooDataClass)
+            if new_value.transaction != self.transaction:
+                raise ValueError("Cannot append a value that is not in the same transaction.")
 
-        # Save to changes
-        if self.changes.get(field_name) is None:
-            self.changes[field_name] = OdooManyToManyHelper()
+            rr_list.append(new_value)
 
-        h = self.changes[field_name]
-        h.adds.append(new_value)
+            # Save to changes
+            if self.changes.get(field_name) is None:
+                self.changes[field_name] = OdooManyToManyHelper()
 
-        related_records.append(new_value)
-        self.transaction.commit()
+            h = self.changes[field_name]
+            h.adds.append(new_value)
 
     def set_one2many(self):
         raise Exception("asdf")
@@ -255,4 +251,4 @@ class OdooDataClass(OdooWrapperInterface):
     def set_value_bool(self, prop, value:bool|None) -> None:  
         self.set_data(prop, bool(value) if value is not None else None)
     def set_value_date(self, prop, value:datetime|None) -> None:  
-        self.set_data(prop, value.strftime('%Y-%m-%d') if value is not None else None)
+        self.set_data(prop, value.strftime('%Y-%m-%d %H:%M:%S') if value is not None else None)
