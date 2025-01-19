@@ -236,7 +236,7 @@ class Klass:
 
             if not os.path.exists(self.file_name_ext):
                 with open(self.file_name_ext, 'w') as f:
-                    f.write(f"from db.{self.name}B import {self.name}B\nfrom typing import Any\nfrom odoo_api.api_wrapper import OdooTransaction\n\nclass {self.name}({self.name}B):\n    def __init__(self, odoo:OdooTransaction, wo:dict[str,Any]|None = None):\n        super().__init__(odoo, wo)")
+                    f.write(f"from db.{self.name}B import {self.name}B\nfrom typing import Any\nfrom odoo_api.api_wrapper import OdooTransaction\n\nclass {self.name}({self.name}B):\n    def __init__(self, odoo:OdooTransaction, id:int|None=None,wo:dict[str,Any]|None = None):\n        super().__init__(odoo, id, wo)")
 
             import_statement = f"from .{self.name} import {self.name}\n"
 
