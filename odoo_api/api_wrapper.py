@@ -34,7 +34,7 @@ class OdooTransaction:
         self.aborted = False
     def _key(self, x:OdooWrapperInterface) -> str:
         if not x.id: raise ValueError(f"Object must have an ID to be saved {x}")
-        return f"{x.model}:{x.id}"
+        return f"{x.MODEL}:{x.id}"
     def _gen_working_id(self) -> int:
         with self.lock:
             self.backend.working_id -= 1
@@ -74,7 +74,7 @@ class OdooTransaction:
             key = self._key(x)
             if key in self.objects:
                 if id(self.objects[key]) != id(x):
-                    raise ValueError(f"Different version in transaction {x.model}:{x.id}")
+                    raise ValueError(f"Different version in transaction {x.MODEL}:{x.id}")
                 return True
             return False
 
@@ -94,7 +94,7 @@ class OdooTransaction:
   #   record = env['event.registration'].search([('id', '=', 14)])
     def get(self, wrapper:type[T], field:str, value:Any) -> T|None:
         with self.lock:
-            model: str = wrapper._MODEL # type: ignore
+            model: str = wrapper.MODEL # type: ignore
             
             if field == "id":
                 assert value
@@ -103,11 +103,11 @@ class OdooTransaction:
                     return self.cache[key]# type: ignore
         
             for _,o in enumerate(self.cache.values()):
-                if o.model == model and o.get_value(field) == value:
+                if o.MODEL == model and o.get_value(field) == value:
                     if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
                     return o # type: ignore
             for _,o in enumerate(self.backend.cache.values()):
-                if o.model == model and o.get_value(field) == value:
+                if o.MODEL == model and o.get_value(field) == value:
                     if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (backend cache hit)")
                     return self.append(o) # type: ignore
             
@@ -130,7 +130,7 @@ class OdooTransaction:
   #   record = env['event.registration'].search([('id', '=', 14)])
     def get2(self, wrapper:type[T], search:list[tuple[str,str,Any]]) -> T|None:
         with self.lock:
-            model: str = wrapper._MODEL # type: ignore
+            model: str = wrapper.MODEL # type: ignore
             only_local_search = True
 
             if len(search) == 1 and search[0][0] == "id" and search[0][1] == "=":
@@ -142,7 +142,7 @@ class OdooTransaction:
             else:
                 for cache in [self.cache, self.backend.cache]:
                     for x in cache.values():
-                        if x.model != model:
+                        if x.MODEL != model:
                             continue
                         if self._matches_search(x, search):
                             return self.append(x) # type: ignore
@@ -162,12 +162,12 @@ class OdooTransaction:
         p = '  ' if getting else ''
 
         with self.lock:
-            model: str = wrapper._MODEL # type: ignore
+            model: str = wrapper.MODEL # type: ignore
             # Manually search for items in transaction if searching for an unsaved record.
             if len(search) == 1 and search[0][1] == "=" and isinstance(search[0][2], int) and search[0][2] < 0:
                 ret = []
                 for x in self.cache.values():
-                    if x.model != model:
+                    if x.MODEL != model:
                         continue
                     if self._matches_search(x, search):
                         ret.append(x)
@@ -266,7 +266,7 @@ class OdooTransaction:
 
     def execute_delete(self, wrapper:type[T], ids:list[int]) -> None:
         with self.lock:
-            model: str = wrapper._MODEL # type: ignore
+            model: str = wrapper.MODEL # type: ignore
             rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
         
             # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
@@ -339,7 +339,7 @@ class OdooTransaction:
                 v.wrapped_oject[ck] = new_obj[ck] = cv
                 del v.changes[ck]
 
-        ids: int = self.create(v.model, [new_obj]) # type: ignore
+        ids: int = self.create(v.MODEL, [new_obj]) # type: ignore
         assert isinstance(ids, int)
 
         # Move it to the new key.
@@ -362,7 +362,7 @@ class OdooTransaction:
                 assert o.id, "Object must have an ID. Negative before save."
                 if new_only and o.id >= 0: # Negative ID is working id.
                     continue
-                if o.changes and o.model == model:
+                if o.changes and o.MODEL == model:
                     cm: dict[str,Any] = {}
                     o_changes = dict(o.changes)
 
@@ -414,7 +414,7 @@ class OdooTransaction:
             raise ValueError("Transaction was aborted")
 
         with self.lock:
-            updated_models = set([m._MODEL for _,m in enumerate(self.objects.values())])# type: ignore
+            updated_models = set([m.MODEL for _,m in enumerate(self.objects.values())])# type: ignore
             models = [m for m in self.backend.save_order if m in updated_models]
             for m in updated_models:
                 if m not in models:

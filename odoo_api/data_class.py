@@ -18,7 +18,7 @@ class OdooDataClass(OdooWrapperInterface):
     def __init__(self, trans:OdooTransaction, model:str, id:int|None, wo:dict[str,Any]|None):
         assert isinstance(trans, OdooTransaction)
         self.trans: OdooTransaction = trans
-        self._MODEL:str = model
+        self.MODEL:str = model
         if wo:
             self.a__wo = wo
         else:
@@ -34,9 +34,9 @@ class OdooDataClass(OdooWrapperInterface):
 
         self.trans.append(self)
 
-    # also note you must have a class property called _MODEL
+    # also note you must have a class property called MODEL
     def __deepcopy__(self, memo):
-        key = f"{self.model}:{self.id}"
+        key = f"{self.MODEL}:{self.id}"
         if key in memo:
             return memo[key]
         trans = memo['trans'] # type: OdooTransaction
@@ -68,7 +68,7 @@ class OdooDataClass(OdooWrapperInterface):
         if self._id is None or other._id is None:
             raise ValueError("Cannot compare objects without id")
             # return super().__eq__(other)
-        return self._id == other._id and self.model == other.model
+        return self._id == other._id and self.MODEL == other.MODEL
 
     def __hash__(self):
         return self._hash
@@ -87,7 +87,7 @@ class OdooDataClass(OdooWrapperInterface):
         return self._changes
     @property
     def wrapped_oject (self)->dict[str,Any]: # type: ignore
-        if self.model == 'res.partner':
+        if self.MODEL == 'res.partner':
             return self.a__wo
         return self.a__wo
  
@@ -159,7 +159,7 @@ class OdooDataClass(OdooWrapperInterface):
             if self.get_value(field_name):
                 db_search = []
                 for x in self.get_value(field_name): # type: ignore
-                    key = f"{other_model_class.model}:{x}"
+                    key = f"{other_model_class.MODEL}:{x}"
                     o = self.transaction.objects.get(key)
                     if o:
                         ret.append(o)
@@ -174,7 +174,7 @@ class OdooDataClass(OdooWrapperInterface):
 
             # check the transaction of related objects.
             for _,r in enumerate(self.transaction.objects.values()):
-                if isinstance(r, other_model_class) and r.get_value(field_in_other_model) == self.id:
+                if isinstance(r, other_model_class) and r.get_value(field_in_other_model) == self.id and r not in ret:
                     ret.append(r)
         return ret
        

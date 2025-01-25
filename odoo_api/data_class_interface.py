@@ -39,7 +39,7 @@ class OdooWrapperInterface(ABC):
         pass
     
     @property
-    def model (self)->str: 
-        return self._MODEL # type: ignore
+    def MODEL (self)->str: 
+        return self.MODEL # type: ignore
 
 

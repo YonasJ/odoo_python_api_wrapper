@@ -151,16 +151,19 @@ class Klass:
             self.fields += f"            return when_none\n"
             self.fields += f"        return ret\n"
 
-            if db_type == 'float' or db_type == 'integer' or db_type == 'char' or field['required']:
-                self.fields += f"    @property # use get version to check for none, will return 0 or empty string in the property.\n"
+            if (db_type == 'float' or db_type == 'integer' or db_type == 'char'):
+                self.fields += f"    @property # use get version to check for none, this will return 0 or empty string in the property.\n"
                 self.fields += f"    def {prop_name}(self) -> {py_type}:\n"
                 self.fields += f"        ret = self.get_{prop_name}()\n"
                 if db_type == 'float':
                     self.fields += f"        if ret is None: return 0.00\n"
-                if db_type == 'integer':
+                elif db_type == 'integer':
                     self.fields += f"        if ret is None: return 0\n"
-                if db_type == 'char':
+                elif db_type == 'char':
                     self.fields += f"        if ret is None: return ''\n"
+                else: 
+                    raise ValueError(f"Unknown type {db_type}")
+                    
                 self.fields += f"        return ret\n"
             else:
                 self.fields += f"    @property\n"
@@ -206,11 +209,11 @@ class Klass:
         header += f"T = TypeVar('T')\n"
         header += f"\n"
         header += f"class {self.name}B(OdooDataClass):\n"
-        header += f"    _MODEL = '{self.model}'\n\n"
+        header += f"    MODEL = '{self.model}'\n\n"
 
 
         header += f"    def __init__(self, trans:OdooTransaction, id:int|None, wo:dict[str,{self.add_import('typing','Any')}]|None):\n"
-        header += f"        super().__init__(trans, self._MODEL, id, wo)\n"
+        header += f"        super().__init__(trans, self.MODEL, id, wo)\n"
         header += f"\n"        
         
         imports = ""
