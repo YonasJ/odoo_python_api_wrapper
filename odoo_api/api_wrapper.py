@@ -30,8 +30,10 @@ class OdooTransaction:
         self.objects:dict[str, OdooWrapperInterface] = {}
         self.cache:dict[str, OdooWrapperInterface] = {}
         self.deletes:list[OdooWrapperInterface] = []
-        self.verbose_logs = False
+        self.verbose_logs = True
         self.aborted = False
+        self.rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+
     def _key(self, x:OdooWrapperInterface) -> str:
         if not x.id: raise ValueError(f"Object must have an ID to be saved {x}")
         return f"{x.MODEL}:{x.id}"
@@ -176,10 +178,9 @@ class OdooTransaction:
                 return ret
             
         with Timer() as t:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
             ret = []
-            for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
-                with self.lock:
+            with self.lock:
+                for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
                     id = x["id"]
                     del x["id"]
                     nr:T = wrapper(self, id, x) # type: ignore
@@ -227,35 +228,30 @@ class OdooTransaction:
 
     def search_raw(self, model:str, search, fields=[]) -> list[OdooWrapperInterface]:
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
             ret = []
-            for x in rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
+            for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
                 from .object_wrapper import ObjectWrapper
                 ret.append(ObjectWrapper(self, model,x)) # type: ignore
             return ret
     
     def read(self, model:str, id, fields) -> OdooWrapperInterface:
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
             from .object_wrapper import ObjectWrapper
-            return ObjectWrapper(self, model, rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'read', [[id]], {'fields': fields})[0])# type: ignore
+            return ObjectWrapper(self, model, self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'read', [[id]], {'fields': fields})[0])# type: ignore
     
     def create(self, model:str, rec:list[dict[str,Any]]) -> list[int]:
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-            return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'create', rec) # type: ignore
+            return self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'create', rec) # type: ignore
 
     def write(self, model:str, id_pk, rec):
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url), allow_none=True)
-            if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
+            if self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
                 return True
             return False
 
     def update_many_to(self, model:str, special_command):
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-            return rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
+            return self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
 
     def delete(self, to_delete:OdooWrapperInterface) -> None:
         if to_delete.id < 0:
@@ -267,25 +263,21 @@ class OdooTransaction:
     def execute_delete(self, wrapper:type[T], ids:list[int]) -> None:
         with self.lock:
             model: str = wrapper.MODEL # type: ignore
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
-        
             # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
             #     return True
             # return False
             for id in ids:
                 if id:
-                    rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [id])
+                    self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [id])
 
     def execute_action(self, model:str, action:str,search):
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True)
-            if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, search):
+            if self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, search):
                 return True
             return False
     def execute_action2(self, model:str, action:str,p1,p2):
         with self.lock:
-            rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url),allow_none=True,verbose=True)
-            if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, [p1,p2]):
+            if self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, [p1,p2]):
                 return True
             return False
             
