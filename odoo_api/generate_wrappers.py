@@ -38,14 +38,7 @@ class Klass:
 
 
         if db_type == 'many2one':
-            # assert prop_name.endswith("_id") , "expected many2one to end in _id"
-            if prop_name.endswith("_id"):
-                rel_prop_name = prop_name[:-3]
-            elif prop_name.endswith("_uid"):
-                rel_prop_name = prop_name[:-4]
-            else:
-                rel_prop_name = prop_name
-
+            rel_prop_name = prop_name
 
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
@@ -76,18 +69,6 @@ class Klass:
                 self.fields += f"    def set_{rel_prop_name}(self, value:{other_class_name}|None) -> None:\n"
                 self.fields += f"        self.set_many2one(self._{prop_name.upper()}, value)\n"
 
-            py_type = "int"
-            self.fields += f"    def get_{rel_prop_name}_id(self, when_none:{py_type}|None=None) -> {py_type}|None:\n"
-            if other_class_name != "OdooDataClass":
-                self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
-            self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name})\n"
-            
-            self.fields += f"        if ret:\n"
-            self.fields += f"            ret2 =ret.id\n"
-            self.fields += f"            if ret2:\n"
-            self.fields += f"                return ret2\n"
-            self.fields += f"        return when_none\n"
-       
         elif db_type == 'one2many':
             # self.imports['typing'] = 'list'
             other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")

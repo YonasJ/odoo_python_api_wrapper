@@ -44,11 +44,6 @@ class OdooTransaction:
 
     # Append the object to the transacition, if it already exists, return the existing object
     def append(self, x:T) -> T:
-        if x.transaction != self:
-            x = deep_copy = copy.deepcopy(x, memo={'trans':self}) # type: ignore
-
-        # print(f"Debugging IDs: {ids_for_debugging}")
-
         with self.lock:
             key = self._key(x)
             ret = self.objects.get(key)
@@ -254,7 +249,7 @@ class OdooTransaction:
             return self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', special_command)
 
     def delete(self, to_delete:OdooWrapperInterface) -> None:
-        if to_delete.id < 0:
+        if to_delete.id > 0:
             self.deletes.append(to_delete)
         self.cache.pop(self._key(to_delete))
         self.objects.pop(self._key(to_delete))
@@ -370,13 +365,12 @@ class OdooTransaction:
 
                         elif isinstance(v, OdooManyToManyHelper):
                             c = []
-                            if not new_only:
-                                for x in v.adds:
-                                    assert x.id
-                                    if x.id < 0:
-                                        self._get_changes_early_save(x)
-                                    assert x.id>0
-                                    c.append((4,x.id)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
+                            for x in v.adds:
+                                assert x.id
+                                if x.id < 0:
+                                    self._get_changes_early_save(x)
+                                assert x.id>0
+                                c.append((4,x.id)) # 4 is the magic number for adding a many2many: https://www.odoo.com/forum/help-1/setting-tags-on-res-partner-via-automated-actions-198441
                             # v is going to be a parameter to the write call.
                             cm[k] = c
                         else:
@@ -446,26 +440,10 @@ class OdooTransaction:
                             self.__find_duplicates()
                     # print(f"created {to_create}")
 
-                    #
-                    # PART 2: RE-FETCH RELATED RECORDS FROM THE DATABASE??? 
-                    #
-
-                    for c in to_createm:
-                        for ffk in c.related_records.values(): # type: ignore
-                            for ff in ffk:
-                                for _, p in inspect.getmembers(type(ff)):  # Iterate directly
-                                    if isinstance(p, property): 
-                                        try:
-                                            other =p.fget(ff) # type: ignore
-                                            if other == c:
-                                                p.fset(ff,c) # type: ignore
-                                        except ValueError as e:                        
-                                            pass
-
-
                 for x in to_createm:
                     self.backend.cache[self._key(x)] = copy.deepcopy(x, memo={'trans':self})# type: ignore
 
+            for model in models: 
                 to_update,to_updatem = self._get_changes(model, False)
 
                 for i, em in enumerate(to_update):
