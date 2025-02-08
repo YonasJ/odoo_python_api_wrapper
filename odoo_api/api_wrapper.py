@@ -98,7 +98,9 @@ class OdooTransaction:
                 key = f"{model}:{value}"
                 if key in self.cache:
                     return self.cache[key]# type: ignore
-        
+                if key in self.backend.cache:
+                    return self.append(self.backend.cache[key])# type: ignore
+                        
             for _,o in enumerate(self.cache.values()):
                 if o.MODEL == model and o.get_value(field) == value:
                     if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
@@ -307,6 +309,17 @@ class OdooTransaction:
 
     def execute_loginj(self):
         return self._execute_actionj("common", "login",[])
+
+    def install_module(self, module:str):
+        raise Exception("This has not been tested.")
+        with self.lock:
+            return self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, 'ir.module.module', 'button_install', [[module]])
+
+    def uninstall_module(self, module:str):
+        raise Exception("This has not been tested.")
+        with self.lock:
+            return self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, 'ir.module.module', 'button_immediate_uninstall', [[module]])
+
     def _get_changes_early_save(self, v:OdooWrapperInterface):
         from .data_class import OdooManyToManyHelper
         new_obj = {}
