@@ -8,7 +8,7 @@ class Klass:
         self.name = name
         self.model = model
         self.model_classes[model] = self.name
-        self.imports = {}
+        self.imports: dict[str,str] = {}
         self.add_import("odoo_api.data_class", "OdooDataClass")
         self.add_import("odoo_api.api_wrapper", "OdooTransaction")
         self.add_import("typing", "TypeVar")
@@ -17,7 +17,9 @@ class Klass:
 
     def add_import(self,ifrom:str,iitem:str) -> str:
         if ifrom in self.imports:
-            if not iitem in self.imports[ifrom]:
+            if not (self.imports[ifrom].endswith(","+iitem) or 
+                    self.imports[ifrom].startswith(iitem+",") or
+                    ","+iitem+"," in self.imports[ifrom]):
                 self.imports[ifrom] = ",".join([self.imports[ifrom], iitem])
         else:
             self.imports[ifrom] = iitem
@@ -102,12 +104,11 @@ class Klass:
             match db_type:
                 case 'float': py_type = py_conversion = 'float'
                 case 'date': 
-                    py_type = self.add_import("datetime", "datetime")
+                    py_type = self.add_import("datetime", "date")
                     py_conversion = 'date'
-                    
                 case 'datetime':  
                     py_type = self.add_import("datetime", "datetime")
-                    py_conversion = 'date'
+                    py_conversion = 'datetime'
                 case 'many2one':
                     py_conversion = 'int'
                     py_type = 'int'
@@ -190,7 +191,7 @@ class Klass:
         header += f"T = TypeVar('T')\n"
         header += f"\n"
         header += f"class {self.name}B(OdooDataClass):\n"
-        header += f"    MODEL = '{self.model}'\n\n"
+        header += f"    _MODEL = '{self.model}'\n\n"
 
 
         header += f"    def __init__(self, trans:OdooTransaction, id:int|None, wo:dict[str,{self.add_import('typing','Any')}]|None):\n"

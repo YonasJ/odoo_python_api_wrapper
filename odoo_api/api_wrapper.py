@@ -1,6 +1,7 @@
 from __future__ import annotations  # This is crucial for forward references
 from abc import ABC, abstractmethod
 import copy
+from datetime import date, datetime
 import inspect
 import re
 import threading
@@ -155,6 +156,16 @@ class OdooTransaction:
             ret = self.search(wrapper, search,getting=True)
             if ret:
                 return ret[0]
+    
+    @staticmethod
+    def convert_value(value):
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(value, date):
+            return value.strftime("%Y-%m-%d")
+        elif isinstance(value, OdooWrapperInterface):
+            return value.id
+        return value
 
   #   record = env['event.registration'].search([('id', '=', 14)])
     def search(self, wrapper:type[T], search, fields=[], getting:bool=False) -> list[T]:
@@ -173,11 +184,26 @@ class OdooTransaction:
 
                 if self.verbose_logs: print(f"{p}Search: {model}  -- {search} (searched local for -ve id)")
                 return ret
-            
+            if len(search) == 1 and search[0][1] == "in" and isinstance(search[0][2], list):
+                ret = []
+                for x in search[0][2]:
+                    xo = self.get(wrapper, search[0][0], x)
+                    if xo:
+                        ret.append(xo)
+                    else:
+                        ret = None
+                        break
+                if ret:
+                    if self.verbose_logs: print(f"{p}Search: {model}  -- {search} (searched local for in)")
+                    return ret
+        search_2 = []
+        for s in search:
+            search_2.append((s[0], s[1], OdooTransaction.convert_value(s[2])))
+
         with Timer() as t:
             ret = []
             with self.lock:
-                for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search], {'fields': fields, 'limit': 5000}):# type: ignore
+                for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search_2], {'fields': fields, 'limit': 5000}):# type: ignore
                     id = x["id"]
                     del x["id"]
                     nr:T = wrapper(self, id, x) # type: ignore

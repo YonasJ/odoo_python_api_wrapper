@@ -1,5 +1,5 @@
 import copy
-from datetime import datetime
+from datetime import date, datetime
 import time
 from typing import Any, TypeVar
 from .api_wrapper import OdooTransaction
@@ -18,7 +18,7 @@ class OdooDataClass(OdooWrapperInterface):
     def __init__(self, trans:OdooTransaction, model:str, id:int|None, wo:dict[str,Any]|None):
         assert isinstance(trans, OdooTransaction)
         self.trans: OdooTransaction = trans
-        self.MODEL:str = model
+        self._MODEL:str = model
         if wo:
             self.a__wo = wo
         else:
@@ -118,7 +118,15 @@ class OdooDataClass(OdooWrapperInterface):
         if ret is None or ret is False:
             return None 
         return str(ret)
-    def get_value_date(self, prop) -> datetime|None:
+    def get_value_date(self, prop) -> date|None:
+        ret= self.get_value(prop)
+        if ret is None or ret is False:
+            return None
+        try:
+            return datetime.strptime(ret, "%Y-%m-%d").date()
+        except ValueError:
+            return datetime.strptime(ret, "%Y-%m-%d")
+    def get_value_datetime(self, prop) -> datetime|None:
         ret= self.get_value(prop)
         if ret is None or ret is False:
             return None
@@ -126,7 +134,6 @@ class OdooDataClass(OdooWrapperInterface):
             return datetime.strptime(ret, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             return datetime.strptime(ret, "%Y-%m-%d")
-
     def get_many2one(self, prop: str, model_class:type[T], when_none:T|None=None) -> T | None:# -> Any | Any | int | None | OdooWrapperInterface:# -> Any | Any | int | None | OdooWrapperInterface:
         assert issubclass(model_class, OdooWrapperInterface)
         obj_field_name =prop
@@ -250,5 +257,7 @@ class OdooDataClass(OdooWrapperInterface):
         self.set_data(prop, int(value) if value is not None else None)
     def set_value_bool(self, prop, value:bool|None) -> None:  
         self.set_data(prop, bool(value) if value is not None else None)
-    def set_value_date(self, prop, value:datetime|None) -> None:  
-        self.set_data(prop, value.strftime('%Y-%m-%d %H:%M:%S') if value is not None else None)
+    def set_value_date(self, prop, value:date|None) -> None:  
+        self.set_data(prop, value.strftime('%Y-%m-%d') if value is not None else None)
+    def set_value_datetime(self, prop, value:datetime|None) -> None:  
+        self.set_data(prop, value.strftime('%Y-%m-%d %H:%M:%S') if value is not None else None)        
