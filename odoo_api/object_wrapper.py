@@ -15,9 +15,17 @@ class ObjectWrapper(OdooWrapperInterface):
     '''
     def __init__(self, be:OdooTransaction, model:str, obj:Any):
         self._wrapped_obj = obj
-        self._model = model
+        self._MODEL = model
         self._be = be  
-        
+    @classmethod
+    def _get_model(cls) -> str:
+        raise NotImplementedError('_get_model property not implemented')
+            
+    @property
+    def MODEL(self)->str:
+        return self._MODEL
+    def get_model(self)->str:
+        return self._MODEL            
     @property
     def transaction (self)->OdooTransaction: 
         return self._be

@@ -14,7 +14,10 @@ class OdooManyToManyHelper:
 T = TypeVar('T')
 
 class OdooDataClass(OdooWrapperInterface):
-    
+    @property
+    def MODEL(self)->str:
+        return self._MODEL
+         
     def __init__(self, trans:OdooTransaction, model:str, id:int|None, wo:dict[str,Any]|None):
         assert isinstance(trans, OdooTransaction)
         self.trans: OdooTransaction = trans
@@ -154,7 +157,7 @@ class OdooDataClass(OdooWrapperInterface):
             return value # type: ignore
         return when_none
     
-    def set_many2one(self, prop:str, value:'OdooDataClass|None') -> None:  
+    def set_many2one(self, prop:str, value:'OdooWrapperInterface|None') -> None:  
         self.set_data(prop, value)
     
     def get_one2many(self, field_name: str, other_model_class:type[T], field_in_other_model:str) -> list[T]:

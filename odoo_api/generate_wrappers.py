@@ -9,6 +9,7 @@ class Klass:
         self.model = model
         self.model_classes[model] = self.name
         self.imports: dict[str,str] = {}
+        self.add_import("odoo_api.object_wrapper", "OdooWrapperInterface")
         self.add_import("odoo_api.data_class", "OdooDataClass")
         self.add_import("odoo_api.api_wrapper", "OdooTransaction")
         self.add_import("typing", "TypeVar")
@@ -41,8 +42,7 @@ class Klass:
 
         if db_type == 'many2one':
             rel_prop_name = prop_name
-
-            other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            other_class_name = self.model_classes.get(field['relation'], "OdooWrapperInterface")
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
             
             always_set_for_type_checking = (field['required'] or 
@@ -52,14 +52,14 @@ class Klass:
             self.field_desc += f"    # {prop_name} is a many2one field of type {other_class_name}\n"
             self.fields += f"    @property # many2one\n"
             self.fields += f"    def {rel_prop_name}(self) -> {other_class_name}{"|None" if not always_set_for_type_checking else ""} : # required: {field['required']}, on delete: {field['on_delete']}\n"
-            if other_class_name != "OdooDataClass":
+            if other_class_name != "OdooWrapperInterface":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name}) \n"
             if always_set_for_type_checking:
                 self.fields += f"        if not ret: raise ValueError(f'Key {prop_name} is not set.') \n"
             self.fields += f"        return ret\n"
             self.fields += f"    def get_{rel_prop_name}(self, when_none:T|None=None) -> {other_class_name}|T:\n"
-            if other_class_name != "OdooDataClass":
+            if other_class_name != "OdooWrapperInterface":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2one(self._{prop_name.upper()}, {other_class_name},when_none)\n"
             self.fields += f"        return ret if ret else when_none # type: ignore\n"
@@ -73,30 +73,30 @@ class Klass:
 
         elif db_type == 'one2many':
             # self.imports['typing'] = 'list'
-            other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            other_class_name = self.model_classes.get(field['relation'], "OdooWrapperInterface")
             self.field_desc += f"    # {prop_name} is a one2many field of type {other_class_name} \n"
             self.type_only_forward_imports[f"{other_class_name}"] = other_class_name
             self.fields += f"    @property # one2many\n"
             self.fields += f"    def {prop_name}(self) -> list[{other_class_name}]:\n"
             self.fields += f"        return self.get_{prop_name}()\n"
             self.fields += f"    def get_{prop_name}(self) -> list[{other_class_name}]:\n"
-            if other_class_name != "OdooDataClass":
+            if other_class_name != "OdooWrapperInterface":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_one2many(self._{prop_name.upper()}, {other_class_name}, '{field['relation_field']}')\n"
             self.fields += f"        return ret\n\n"
         elif db_type == 'many2many':
             # self.imports['typing'] = 'list'
-            other_class_name = self.model_classes.get(field['relation'], "OdooDataClass")
+            other_class_name = self.model_classes.get(field['relation'], "OdooWrapperInterface")
             self.field_desc += f"    # {prop_name} is a many2many field of type {other_class_name} \n"
             self.type_only_forward_imports[f"db.{other_class_name}"] = other_class_name
             self.fields += f"    @property # many2many\n"
             self.fields += f"    def {prop_name}(self) -> tuple[{other_class_name}]:\n"
-            if other_class_name != "OdooDataClass":
+            if other_class_name != "OdooWrapperInterface":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        ret = self.get_many2many(self._{prop_name.upper()}, {other_class_name}) \n"
             self.fields += f"        return ret\n"
             self.fields += f"    def {prop_name}_append(self, new_value:{other_class_name}|list[{other_class_name}]):\n"
-            if other_class_name != "OdooDataClass":
+            if other_class_name != "OdooWrapperInterface":
                 self.fields += f"        from db.{other_class_name} import {other_class_name}\n"
             self.fields += f"        self.append_many2many(self._{prop_name.upper()}, {other_class_name}, new_value) \n\n"
         else:                    
@@ -191,17 +191,18 @@ class Klass:
         header += f"T = TypeVar('T')\n"
         header += f"\n"
         header += f"class {self.name}B(OdooDataClass):\n"
-        header += f"    _MODEL = '{self.model}'\n\n"
-
+        header += f"    @classmethod\n"
+        header += f"    def _get_model(cls) -> str:\n"
+        header += f"        return '{self.model}'\n"
 
         header += f"    def __init__(self, trans:OdooTransaction, id:int|None, wo:dict[str,{self.add_import('typing','Any')}]|None):\n"
-        header += f"        super().__init__(trans, self.MODEL, id, wo)\n"
+        header += f"        super().__init__(trans, '{self.model}', id, wo)\n"
         header += f"\n"        
         
         imports = ""
         if self.type_only_forward_imports:
             for k,v in self.type_only_forward_imports.items():            
-                if v != "OdooDataClass":
+                if v != "OdooDataClass" and v != "OdooWrapperInterface":
                     if not "from typing import TYPE_CHECKING" in imports:
                         imports += f"from __future__ import annotations  # This is crucial for forward references\n"
                         imports += f"from typing import TYPE_CHECKING\n"

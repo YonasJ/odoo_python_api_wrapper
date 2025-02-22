@@ -40,6 +40,10 @@ class OdooWrapperInterface(ABC):
     
     @property
     def MODEL (self)->str: 
-        return self._MODEL # type: ignore
+        raise NotImplementedError('MODEL property not implemented')
 
+    @classmethod
+    @abstractmethod
+    def _get_model(cls) -> str:
+        raise NotImplementedError('_get_model property not implemented')
 

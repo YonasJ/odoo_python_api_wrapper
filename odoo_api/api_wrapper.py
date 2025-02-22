@@ -172,7 +172,7 @@ class OdooTransaction:
         p = '  ' if getting else ''
 
         with self.lock:
-            model: str = wrapper.MODEL # type: ignore
+            model: str = wrapper._get_model() # type: ignore
             # Manually search for items in transaction if searching for an unsaved record.
             if len(search) == 1 and search[0][1] == "=" and isinstance(search[0][2], int) and search[0][2] < 0:
                 ret = []
@@ -198,7 +198,10 @@ class OdooTransaction:
                     return ret
         search_2 = []
         for s in search:
-            search_2.append((s[0], s[1], OdooTransaction.convert_value(s[2])))
+            if len(s) == 1:
+                search_2.append(s)  
+            else:                
+                search_2.append((s[0], s[1], OdooTransaction.convert_value(s[2])))
 
         with Timer() as t:
             ret = []
@@ -285,7 +288,7 @@ class OdooTransaction:
 
     def execute_delete(self, wrapper:type[T], ids:list[int]) -> None:
         with self.lock:
-            model: str = wrapper.MODEL # type: ignore
+            model: str = wrapper._get_model() # type: ignore
             # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
             #     return True
             # return False
