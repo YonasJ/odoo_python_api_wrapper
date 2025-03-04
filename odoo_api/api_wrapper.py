@@ -167,6 +167,23 @@ class OdooTransaction:
             return value.id
         return value
 
+    def search_limit_order(self, wrapper:type[T], search, order:str, limit:int=1,fields=[],) -> T|None:
+        search_2 = []
+        for s in search:
+            if len(s) == 1:
+                search_2.append(s)  
+            else:                
+                search_2.append((s[0], s[1], OdooTransaction.convert_value(s[2])))
+                        
+        model: str = wrapper._get_model() # type: ignore
+        for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search_2], {'fields': fields, 'limit': limit, 'order':order}):# type: ignore
+            id = x["id"]
+            del x["id"]
+            nr:T = wrapper(self, id, x) # type: ignore
+            return nr
+        return None
+
+
   #   record = env['event.registration'].search([('id', '=', 14)])
     def search(self, wrapper:type[T], search, fields=[], getting:bool=False) -> list[T]:
         p = '  ' if getting else ''
