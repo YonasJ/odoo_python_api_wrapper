@@ -271,6 +271,12 @@ class OdooTransaction:
 
     def write(self, model:str, id_pk, rec):
         with self.lock:
+
+            # loop through all keys in rec and replace all values of None with False.
+            for k,v in rec.items():
+                if v == None:
+                    rec[k] = False
+
             if self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
                 return True
             return False
