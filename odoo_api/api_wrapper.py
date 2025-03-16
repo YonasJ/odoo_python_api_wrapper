@@ -33,7 +33,7 @@ class OdooTransaction:
         self.deletes:list[OdooWrapperInterface] = []
         self.verbose_logs = True
         self.aborted = False
-        self.rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url))
+        self.rpcmodel = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.url), allow_none=True)
 
     def _key(self, x:OdooWrapperInterface) -> str:
         if not x.id: raise ValueError(f"Object must have an ID to be saved {x}")
@@ -92,7 +92,7 @@ class OdooTransaction:
   #   record = env['event.registration'].search([('id', '=', 14)])
     def get(self, wrapper:type[T], field:str, value:Any) -> T|None:
         with self.lock:
-            model: str = wrapper.MODEL # type: ignore
+            model: str = wrapper._get_model()
             
             if field == "id":
                 assert value
@@ -177,10 +177,15 @@ class OdooTransaction:
                         
         model: str = wrapper._get_model() # type: ignore
         for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search_2], {'fields': fields, 'limit': limit, 'order':order}):# type: ignore
-            id = x["id"]
-            del x["id"]
-            nr:T = wrapper(self, id, x) # type: ignore
-            return nr
+            existing = self.cache.get(f"{model}:{x['id']}")
+            if existing:
+                assert isinstance(existing, wrapper)
+                return existing  
+            else:
+                id = x["id"]
+                del x["id"]
+                nr:T = wrapper(self, id, x) # type: ignore
+                return nr
         return None
 
 
@@ -224,10 +229,15 @@ class OdooTransaction:
             ret = []
             with self.lock:
                 for x in self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'search_read', [search_2], {'fields': fields, 'limit': 5000}):# type: ignore
-                    id = x["id"]
-                    del x["id"]
-                    nr:T = wrapper(self, id, x) # type: ignore
-                    ret.append(nr) 
+                    # First check if this object is already in the transactions.
+                    existing = self.cache.get(f"{model}:{x['id']}")
+                    if existing:
+                        ret.append(existing)
+                    else:
+                        id = x["id"]
+                        del x["id"]
+                        nr:T = wrapper(self, id, x) # type: ignore
+                        ret.append(nr) 
 
             if self.verbose_logs and search in [ # these are search, not get. And they could be lazy. It is fetching them just in case.
                     [('name', '=', 'Kelsey Janssen'), ('function', 'in', ['Owner', 'Manager', 'Consultant'])],
@@ -309,9 +319,12 @@ class OdooTransaction:
         self.objects.pop(self._key(to_delete))
         self.backend.cache.pop(self._key(to_delete))
 
-    def execute_delete(self, wrapper:type[T], ids:list[int]) -> None:
+    def execute_delete(self, wrapper:type[T]|str, ids:list[int]) -> None:
         with self.lock:
-            model: str = wrapper._get_model() # type: ignore
+            if isinstance(wrapper, str):
+                model = wrapper
+            else:
+                model: str = wrapper._get_model() # type: ignore
             # if rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'unlink', [ids]):
             #     return True
             # return False

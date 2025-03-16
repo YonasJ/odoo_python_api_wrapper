@@ -237,7 +237,7 @@ class OdooDataClass(OdooWrapperInterface):
         if prop != 'id':
             self.trans.append(self)
 
-        db_val = self.a__wo.get(prop)
+        db_val: Any | None = self.a__wo.get(prop)
         if db_val == value and prop in self.changes:
             del self.changes[prop]
         elif db_val != value:  
