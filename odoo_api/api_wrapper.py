@@ -103,11 +103,11 @@ class OdooTransaction:
                     return self.append(self.backend.cache[key])# type: ignore
                         
             for _,o in enumerate(self.cache.values()):
-                if o.MODEL == model and o.get_value(field) == value:
+                if o.MODEL == model and getattr(o,field) == value:
                     if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (cache hit)")
                     return o # type: ignore
             for _,o in enumerate(self.backend.cache.values()):
-                if o.MODEL == model and o.get_value(field) == value:
+                if o.MODEL == model and getattr(o,field) == value:
                     if self.verbose_logs: print(f"Get: {model}  -- {field} = {value} (backend cache hit)")
                     return self.append(o) # type: ignore
             
@@ -118,11 +118,15 @@ class OdooTransaction:
             
     def _matches_search(self, c:OdooWrapperInterface, search:list[tuple[str,str,Any]]):
         for s in search:
+            sqv = getattr(c, s[0])
             if s[1] == "=":
-                if c.get_value(s[0]) != s[2]:
+                if isinstance(sqv,OdooWrapperInterface):
+                    if sqv.id != s[2]:
+                        return False
+                elif sqv != s[2]:
                     return False
             elif s[1] == "in":
-                if c.get_value(s[0]) not in s[2]:
+                if sqv not in s[2]:
                     return False
             else:
                 raise ValueError(f"Unknown search operator {s[1]}")
@@ -130,7 +134,7 @@ class OdooTransaction:
   #   record = env['event.registration'].search([('id', '=', 14)])
     def get2(self, wrapper:type[T], search:list[tuple[str,str,Any]]) -> T|None:
         with self.lock:
-            model: str = wrapper.MODEL # type: ignore
+            model: str = wrapper._get_model() # type: ignore
             only_local_search = True
 
             if len(search) == 1 and search[0][0] == "id" and search[0][1] == "=":
