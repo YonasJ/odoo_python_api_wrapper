@@ -1,8 +1,6 @@
 from __future__ import annotations  # This is crucial for forward references
-from abc import ABC, abstractmethod
 import copy
 from datetime import date, datetime
-import inspect
 import re
 import threading
 from .data_class_interface import OdooWrapperInterface
@@ -567,10 +565,11 @@ class OdooBackend:
     def __init__(self, db, save_order = []):
         if db.startswith('http'):
             self.url = db
-        else:   
+            match = re.search(r"https?://([^.]+)", self.url)
+            self.db: str | Any = match.group(1) if match else None
+        else:
             self.url = f"https://{db}.odoo.com"
-        match = re.search(r"https?://([^.]+)", self.url)
-        self.db: str | Any = match.group(1) if match else None
+            self.db = db
 
         p = KeePass().get_login(re.sub(r"https?", "api", self.url))
         self.username = p.login
