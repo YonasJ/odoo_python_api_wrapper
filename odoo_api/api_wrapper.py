@@ -20,9 +20,17 @@ import urllib.request
 from .keepass_passwords import KeePass
 
 T = TypeVar('T', bound='OdooWrapperInterface')
+class NoLock:
+    """A dummy lock that does nothing, useful for debugging"""
+    def __enter__(self) -> None:
+        pass
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        pass
 
 class OdooTransaction:    
-    lock = threading.RLock()
+    # lock = threading.RLock()
+    lock = NoLock()
 
     def __init__(self, backend:OdooBackend):
         self.backend = backend
@@ -344,8 +352,44 @@ class OdooTransaction:
             if self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, action, [p1,p2]):
                 return True
             return False
-            
-      
+
+    def execute_controller(self, path:str, post_json):
+        with self.lock:
+
+            try:
+                # Create the URL for the controller endpoint
+                endpoint = f"{self.url}/{path}"
+
+                # Set up headers with proper authentication
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+
+                # Import requests if not already imported
+                import requests
+                import json
+
+                # Create session with authentication
+                session = requests.Session()
+                session.auth = (self.backend.username, self.backend.api_key)
+
+                # Make the request
+                response = session.post(
+                    endpoint,
+                    headers=headers,
+                    json=post_json
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                else:
+                    print(f"Error: {response.status_code} - {response.text}")
+                    raise Exception(f"Failed to call controller: {response.text}")
+
+            except Exception as e:
+                print(f"Error calling controller: {str(e)}")
+
     def _execute_actionj(self, rpc_service, rpc_method, params):
         with self.lock:
             url = f"{self.url}/jsonrpc"
