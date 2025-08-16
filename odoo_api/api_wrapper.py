@@ -325,9 +325,9 @@ class OdooTransaction:
     def delete(self, to_delete:OdooWrapperInterface) -> None:
         if to_delete.id > 0:
             self.deletes.append(to_delete)
-        self.cache.pop(self._key(to_delete))
-        self.objects.pop(self._key(to_delete))
-        self.backend.cache.pop(self._key(to_delete))
+        self.cache.pop(self._key(to_delete), None)
+        self.objects.pop(self._key(to_delete), None)
+        self.backend.cache.pop(self._key(to_delete), None)
 
     def execute_delete(self, wrapper:type[T]|str, ids:list[int]) -> None:
         with self.lock:
