@@ -18,6 +18,7 @@ import random
 import urllib
 import urllib.request
 from .keepass_passwords import KeePass
+from enum import Enum
 
 T = TypeVar('T', bound='OdooWrapperInterface')
 class NoLock:
@@ -175,6 +176,15 @@ class OdooTransaction:
             return value.strftime("%Y-%m-%d")
         elif isinstance(value, OdooWrapperInterface):
             return value.id
+        elif isinstance(value, Enum):
+            # Prefer the underlying value; fall back to name or str
+            try:
+                raw = value.value
+            except Exception:
+                raw = None
+            if isinstance(raw, (str, int, float, bool)):
+                return raw
+            return getattr(value, 'name', str(value))
         return value
 
     def search_limit_order(self, wrapper:type[T], search, order:str, limit:int=1,fields=[],) -> T|None:
@@ -309,10 +319,12 @@ class OdooTransaction:
     def write(self, model:str, id_pk, rec):
         with self.lock:
 
-            # loop through all keys in rec and replace all values of None with False.
-            for k,v in rec.items():
-                if v == None:
+            # loop through all keys in rec and sanitize values
+            for k,v in list(rec.items()):
+                if v is None:
                     rec[k] = False
+                else:
+                    rec[k] = OdooTransaction.convert_value(v)
 
             if self.rpcmodel.execute_kw(self.db, self.uid, self.api_key, model, 'write', [[id_pk], rec]):
                 return True
@@ -498,7 +510,7 @@ class OdooTransaction:
                             # v is going to be a parameter to the write call.
                             cm[k] = c
                         else:
-                            cm[k] = v
+                            cm[k] = OdooTransaction.convert_value(v)
                     to_create.append(cm)  
                     to_createm.append(o)  
                         
