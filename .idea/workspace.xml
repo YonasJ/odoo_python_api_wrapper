@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="57cafa95-b03f-411f-a9bd-ec58aa78bce0" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/odoo_python_api_wrapper.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/api_wrapper.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/api_wrapper.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/data_class.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/data_class.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/data_class_interface.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/data_class_interface.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/generate_wrappers.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/generate_wrappers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/keepass_passwords.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/keepass_passwords.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/object_wrapper.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/object_wrapper.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/odoo_api/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/odoo_python_api_wrapper/utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/setup.py" beforeDir="false" afterPath="$PROJECT_DIR$/setup.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;YonasJ&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/YonasJ/odoo_python_api_wrapper.git&quot;,
+    &quot;accountId&quot;: &quot;c05ab89b-5532-4283-8303-c8b0cc5b85da&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 2
+}</component>
+  <component name="ProjectId" id="36D2hBhWG86nkP4Se76gDdfXrKq" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\yonas\Documents\odoo_python_api_wrapper\src\odoo_python_api_wrapper" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-PY-252.27397.106" />
+        <option value="bundled-python-sdk-4e2b1448bda8-9a97661f3031-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.27397.106" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="57cafa95-b03f-411f-a9bd-ec58aa78bce0" name="Changes" comment="" />
+      <created>1764526937348</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1764526937348</updated>
+      <workItem from="1764526938578" duration="2120000" />
+      <workItem from="1764541664723" duration="1323000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>

@@ -2,8 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name='odoo_python_api_wrapper',
-    version='0.1.0',
-    packages=find_packages(),
+    version='0.2.1',
+    package_dir={'': 'src'},
+    packages=find_packages(where='src'),
     include_package_data=True,
     install_requires=[
         'keepassxc-proxy-client'
