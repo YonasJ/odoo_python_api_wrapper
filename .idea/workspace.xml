@@ -19,12 +19,7 @@
     &quot;assignee&quot;: &quot;YonasJ&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings">{
-  &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/YonasJ/odoo_python_api_wrapper.git&quot;,
-    &quot;accountId&quot;: &quot;c05ab89b-5532-4283-8303-c8b0cc5b85da&quot;
-  }
-}</component>
+
   <component name="ProjectColorInfo">{
   &quot;customColor&quot;: &quot;&quot;,
   &quot;associatedIndex&quot;: 2
