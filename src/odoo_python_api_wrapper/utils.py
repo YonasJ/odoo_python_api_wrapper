@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 import time
 from typing import Any
 
@@ -15,6 +15,17 @@ def my_strptime(row, field, format) -> datetime|None:
         return datetime.strptime(row[field], format)
     except ValueError:  # Handle invalid date format
         return None
+
+def parse_date(date_str, extra_formats = None) -> date | None:
+    for f in extra_formats or []:
+        try:
+            return datetime.strptime(date_str, f).date()
+        except ValueError:
+            pass
+
+    if date_str:
+        return datetime.strptime(date_str, "%m/%d/%Y").date()
+    return None
 
 T = TypeVar('T')  # Define a TypeVar
 def parse_money(value:str|None, when_none:T=False) -> float | T:
@@ -42,6 +53,12 @@ def normalize_money(value:float) -> float:
         return 0.00
     return round(value,2)
 
+def parse_int(int_str, when_none:T=None) -> int|T:
+    if int_str:
+        ret = int(int_str)
+        return (ret if ret else when_none)
+    return when_none
+
 
 T = TypeVar('T')
 from dataclasses import fields, is_dataclass
@@ -55,7 +72,14 @@ def parse_row_to_dataclass(data_class: type[T], row_number: int, headers:list[st
         if f.name != "row_number":
             if f.metadata.get("col"):
                 col = f.metadata["col"]
-                value = row[col]
+                try:
+                    value = row[col]
+                except IndexError:
+                    if f.metadata.get("col"):
+                        raise IndexError(f"Could not find {f.metadata.get("col")}({col}) in row {row}.")
+                    else:
+                        raise IndexError(f"Could not find {col} in row {row}.")
+
             elif f.metadata.get("name"):
                 col = f.metadata["name"]
                 if headers.index(col) < len(row):
